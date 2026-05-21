@@ -1,0 +1,284 @@
+services:
+  auth-db:
+    image: postgres:16
+    container_name: photohub-auth-db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5438:5432"
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    networks:
+      - photohub-network
+
+  friends-db:
+    image: postgres:16
+    container_name: photohub-friends-db
+    environment:
+      POSTGRES_DB: friends_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - friends-db-data:/var/lib/postgresql/data
+    networks:
+      - photohub-network
+
+  photo-db:
+    image: postgres:16
+    container_name: photohub-photo-db
+    environment:
+      POSTGRES_DB: photo_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5435:5432"
+    volumes:
+      - photo-db-data:/var/lib/postgresql/data
+    networks:
+      - photohub-network
+
+  feed-db:
+    image: postgres:16
+    container_name: photohub-feed-db
+    environment:
+      POSTGRES_DB: feed_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5436:5432"
+    volumes:
+      - feed-db-data:/var/lib/postgresql/data
+    networks:
+      - photohub-network
+
+  like-db:
+    image: postgres:16
+    container_name: photohub-like-db
+    environment:
+      POSTGRES_DB: like_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5437:5432"
+    volumes:
+      - like-db-data:/var/lib/postgresql/data
+    networks:
+      - photohub-network
+
+  redis:
+    image: redis:7
+    container_name: photohub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - photohub-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: photohub-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - photohub-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: src/Services/Auth/PhotoHub.AuthService/Dockerfile
+    container_name: photohub-auth-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=auth-db;Port=5432;Database=auth_db;Username=photohub;Password=photohub_password
+    ports:
+      - "5001:8080"
+    depends_on:
+      - auth-db
+    networks:
+      - photohub-network
+
+  friends-service:
+    build:
+      context: .
+      dockerfile: src/Services/Friends/PhotoHub.FriendsService/Dockerfile
+    container_name: photohub-friends-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=friends-db;Port=5432;Database=friends_db;Username=photohub;Password=photohub_password
+    ports:
+      - "5002:8080"
+    depends_on:
+      - friends-db
+    networks:
+      - photohub-network
+
+  photo-service:
+    build:
+      context: .
+      dockerfile: src/Services/Photo/PhotoHub.PhotoService/Dockerfile
+    container_name: photohub-photo-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=photo-db;Port=5432;Database=photo_db;Username=photohub;Password=photohub_password
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: photohub
+      RabbitMq__Password: photohub_password
+    ports:
+      - "5003:8080"
+    depends_on:
+      - photo-db
+      - rabbitmq
+    networks:
+      - photohub-network
+
+  preview-service:
+    build:
+      context: .
+      dockerfile: src/Services/Preview/PhotoHub.PreviewService/Dockerfile
+    container_name: photohub-preview-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: photohub
+      RabbitMq__Password: photohub_password
+    ports:
+      - "5006:8080"
+    depends_on:
+      - rabbitmq
+    networks:
+      - photohub-network
+
+  feed-service:
+    build:
+      context: .
+      dockerfile: src/Services/Feed/PhotoHub.FeedService/Dockerfile
+    container_name: photohub-feed-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Services__FriendsServiceUrl: http://friends-service:8080
+      Services__PhotoServiceUrl: http://photo-service:8080
+    ports:
+      - "5004:8080"
+    depends_on:
+      - friends-service
+      - photo-service
+    networks:
+      - photohub-network
+
+  like-service:
+    build:
+      context: .
+      dockerfile: src/Services/Like/PhotoHub.LikeService/Dockerfile
+    container_name: photohub-like-service
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=like-db;Port=5432;Database=like_db;Username=photohub;Password=photohub_password
+      ConnectionStrings__Redis: redis:6379
+    ports:
+      - "5005:8080"
+    depends_on:
+      - like-db
+      - redis
+    networks:
+      - photohub-network
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/PhotoHub.ApiGateway/Dockerfile
+    container_name: photohub-api-gateway
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ReverseProxy__Clusters__auth-cluster__Destinations__auth-service__Address: http://auth-service:8080
+      ReverseProxy__Clusters__friends-cluster__Destinations__friends-service__Address: http://friends-service:8080
+      ReverseProxy__Clusters__photos-cluster__Destinations__photo-service__Address: http://photo-service:8080
+      ReverseProxy__Clusters__feed-cluster__Destinations__feed-service__Address: http://feed-service:8080
+      ReverseProxy__Clusters__likes-cluster__Destinations__like-service__Address: http://like-service:8080
+    ports:
+      - "5000:8080"
+    depends_on:
+      - auth-service
+      - friends-service
+      - photo-service
+      - preview-service
+      - feed-service
+      - like-service
+    networks:
+      - photohub-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: photohub-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - photohub-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: photohub-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - photohub-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: photohub-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - photohub-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: photohub-jaeger
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - photohub-network
+
+networks:
+  photohub-network:
+    name: photohub-network
+    driver: bridge
+
+volumes:
+  auth-db-data:
+  friends-db-data:
+  photo-db-data:
+  feed-db-data:
+  like-db-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:

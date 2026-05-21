@@ -1,0 +1,6 @@
+@PhotoHub.PhotoService_HostAddress = http://localhost:5058
+
+GET {{PhotoHub.PhotoService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
