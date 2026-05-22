@@ -1,0 +1,6 @@
+@PhotoHub.ApiGateway_HostAddress = http://localhost:5282
+
+GET {{PhotoHub.ApiGateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
