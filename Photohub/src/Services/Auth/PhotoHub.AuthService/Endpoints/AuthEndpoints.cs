@@ -20,6 +20,9 @@ public static class AuthEndpoints
         group.MapPost("/login", LoginAsync)
             .WithName("Login");
 
+        group.MapGet("/users", GetAllUsersAsync)
+            .WithName("GetAllUsers");
+
         return group;
     }
 
@@ -158,6 +161,18 @@ public static class AuthEndpoints
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static async Task<IResult> GetAllUsersAsync(
+        AuthDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var users = await dbContext.Users
+            .OrderBy(u => u.UserName)
+            .Select(u => new AuthUserResponse(u.Id, u.UserName, u.Email))
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(users);
     }
 }
 

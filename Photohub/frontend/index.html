@@ -356,6 +356,15 @@
     </div>
   </div>
 
+<!-- ── PEOPLE ── -->
+<div class="page" id="page-people">
+  <div class="container">
+    <div class="page-title">Люди</div>
+    <div class="page-sub">Найдите интересных авторов и подпишитесь</div>
+    <div id="people-body"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+  </div>
+</div>
+
 </main>
 
 <div class="toast" id="toast"></div>
@@ -424,6 +433,7 @@ function go(page) {
   document.getElementById('page-' + page).classList.add('active');
   renderNav(page);
   if (page === 'feed')    loadFeed();
+  if (page === 'people')  loadPeople();
   if (page === 'profile') loadProfile();
 }
 
@@ -432,6 +442,7 @@ function renderNav(cur) {
   if (!s.token) { el.innerHTML = ''; return; }
   el.innerHTML =
     navBtn('feed',    'Лента',     cur) +
+    navBtn('people',  'Люди',      cur) +
     navBtn('upload',  'Загрузить', cur) +
     navBtn('profile', 'Профиль',   cur) +
     `<span class="nav-user">@${esc(s.userName)}</span>` +
@@ -556,12 +567,30 @@ function photoCard(p) {
 async function fetchLikes(photoId) {
   if (!photoId) return;
   try {
+    // Получаем счётчик
     const r = await fetch(`${API.likes}/photos/${photoId}/count`);
-    if (!r.ok) return;
-    const d = await r.json();
-    const cnt = d.count ?? d.Count ?? 0;
-    const el = document.getElementById(`cnt-${photoId}`);
-    if (el) el.textContent = cnt;
+    if (r.ok) {
+      const d = await r.json();
+      const cnt = d.count ?? d.Count ?? 0;
+      const el = document.getElementById(`cnt-${photoId}`);
+      if (el) el.textContent = cnt;
+    }
+    // Проверяем, лайкнул ли текущий пользователь
+    if (s.userId) {
+      const r2 = await fetch(`${API.likes}/photos/${photoId}/users/${s.userId}`);
+      if (r2.ok) {
+        const hasLiked = await r2.json();
+        if (hasLiked) {
+          likedSet.add(photoId);
+          const btn = document.getElementById(`like-${photoId}`);
+          if (btn) {
+            btn.classList.add('liked');
+            const svgEl = btn.querySelector('svg');
+            if (svgEl) svgEl.outerHTML = svgHeart(true);
+          }
+        }
+      }
+    }
   } catch {}
 }
 
@@ -574,18 +603,26 @@ async function toggleLike(photoId) {
   const liked = likedSet.has(photoId);
   try {
     if (liked) {
-      await fetch(API.likes, { method:'DELETE', headers:{...auth(),'Content-Type':'application/json'},
-        body: JSON.stringify({ photoId, userId: s.userId }) });
+      await fetch(API.likes, {
+        method: 'DELETE',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoId, userId: s.userId })
+      });
       likedSet.delete(photoId);
     } else {
-      const r = await fetch(API.likes, { method:'POST', headers:{...auth(),'Content-Type':'application/json'},
-        body: JSON.stringify({ photoId, userId: s.userId }) });
+      const r = await fetch(API.likes, {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoId, userId: s.userId })
+      });
       if (r.ok || r.status === 409) likedSet.add(photoId);
     }
   } catch {}
   const nowLiked = likedSet.has(photoId);
   btn.classList.toggle('liked', nowLiked);
-  btn.innerHTML = svgHeart(nowLiked) + `<span id="cnt-${photoId}">–</span>`;
+  // Обновляем только SVG иконку, НЕ трогая span с счётчиком
+  const svgEl = btn.querySelector('svg');
+  if (svgEl) svgEl.outerHTML = svgHeart(nowLiked);
   fetchLikes(photoId);
 }
 
@@ -595,7 +632,7 @@ async function doFollow(followeeId) {
   try {
     const r = await fetch(`${API.friends}/follow`, {
       method:'POST', headers:{...auth(),'Content-Type':'application/json'},
-      body: JSON.stringify({ followerId: s.userId, followeeId }),
+      body: JSON.stringify({ followerId: s.userId, followingId: followeeId }),
     });
     if (r.ok) {
       if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
@@ -682,18 +719,36 @@ async function loadProfile() {
       <div class="profile-id">${s.userId}</div>
       <div class="profile-stats">
         <div><div class="stat-val" id="st-photos">–</div><div class="stat-lbl">Фото</div></div>
+        <div><div class="stat-val" id="st-following">–</div><div class="stat-lbl">Подписки</div></div>
+        <div><div class="stat-val" id="st-followers">–</div><div class="stat-lbl">Подписчики</div></div>
       </div>
     </div>`;
 
   photosEl.innerHTML = spinner();
 
   try {
-    // correct route: /by-user/{userId}
-    const r = await fetch(`${API.photos}/by-user/${s.userId}`, { headers: auth() });
-    if (!r.ok) throw new Error();
-    const photos = await r.json();
-    const el = document.getElementById('st-photos');
-    if (el) el.textContent = photos.length;
+    const [photosRes, followersRes, followingRes] = await Promise.all([
+      fetch(`${API.photos}/by-user/${s.userId}`, { headers: auth() }),
+      fetch(`${API.friends}/${s.userId}/followers`),
+      fetch(`${API.friends}/${s.userId}/following`),
+    ]);
+
+    if (!photosRes.ok) throw new Error();
+    const photos = await photosRes.json();
+    const stPhotos = document.getElementById('st-photos');
+    if (stPhotos) stPhotos.textContent = photos.length;
+
+    if (followersRes.ok) {
+      const followers = await followersRes.json();
+      const stFollowers = document.getElementById('st-followers');
+      if (stFollowers) stFollowers.textContent = followers.length;
+    }
+
+    if (followingRes.ok) {
+      const following = await followingRes.json();
+      const stFollowing = document.getElementById('st-following');
+      if (stFollowing) stFollowing.textContent = following.length;
+    }
 
     if (!photos.length) { photosEl.innerHTML = empty('📷', 'Вы ещё ничего не публиковали'); return; }
 
@@ -712,6 +767,73 @@ function gridCell(p) {
       ? `<img src="${esc(url)}" alt="${esc(p.title||'')}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'grid-placeholder',textContent:'🖼️'}))">`
       : `<div class="grid-placeholder">🖼️</div>`}
   </div>`;
+}
+
+// ──────────────────────────────────────────────────────────
+// PEOPLE
+// ──────────────────────────────────────────────────────────
+async function loadPeople() {
+  const el = document.getElementById('people-body');
+  el.innerHTML = spinner();
+  try {
+    const r = await fetch(`${API.auth}/users`, { headers: auth() });
+    if (!r.ok) throw new Error(r.status);
+    const users = await r.json();
+    // Убрать себя из списка
+    const others = users.filter(u => u.userId !== s.userId);
+    if (!others.length) {
+      el.innerHTML = empty('👥', 'Пока нет других пользователей');
+      return;
+    }
+    // Загрузить подписки текущего пользователя
+    let followingIds = new Set();
+    try {
+      const fr = await fetch(`${API.friends}/${s.userId}/following`);
+      if (fr.ok) {
+        const ids = await fr.json();
+        followingIds = new Set(ids.map(id => String(id)));
+      }
+    } catch {}
+    el.innerHTML = others.map(u => {
+      const isFollowing = followingIds.has(String(u.userId));
+      const initial = (u.userName || '?')[0].toUpperCase();
+      return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px">
+        <div class="avatar">${initial}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:600">@${esc(u.userName)}</div>
+          <div style="font-size:12px;color:var(--muted)">${esc(u.email)}</div>
+        </div>
+        <button class="follow-btn ${isFollowing ? 'following' : ''}"
+          id="follow-${u.userId}"
+          onclick="doFollowPeople('${u.userId}')"
+          ${isFollowing ? 'disabled' : ''}>
+          ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
+        </button>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = empty('⚠️', 'Не удалось загрузить пользователей. Проверь, что AuthService запущен.');
+  }
+}
+
+async function doFollowPeople(followeeId) {
+  if (!followeeId || followeeId === s.userId) return;
+  const btn = document.getElementById(`follow-${followeeId}`);
+  try {
+    const r = await fetch(`${API.friends}/follow`, {
+      method: 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ followerId: s.userId, followingId: followeeId }),
+    });
+    if (r.ok) {
+      if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
+      toast('Вы подписались!', 't-ok');
+    } else if (r.status === 409) {
+      if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
+    } else {
+      toast('Ошибка при подписке', 't-err');
+    }
+  } catch { toast('Ошибка соединения', 't-err'); }
 }
 
 // ──────────────────────────────────────────────────────────
