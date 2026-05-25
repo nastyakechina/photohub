@@ -180,12 +180,14 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Services__FriendsServiceUrl: http://friends-service:8080
       Services__PhotoServiceUrl: http://photo-service:8080
+      Services__AuthServiceUrl: http://auth-service:8080
       Otlp__Endpoint: http://jaeger:4317
     ports:
       - "5004:8080"
     depends_on:
       - friends-service
       - photo-service
+      - auth-service
     networks:
       - photohub-network
 

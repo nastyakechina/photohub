@@ -51,4 +51,9 @@ public sealed class Photo
     {
         PreviewObjectKey = previewObjectKey.Trim();
     }
+
+    public void UpdateDescription(string? description)
+    {
+        Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+    }
 }

@@ -17,6 +17,7 @@ public static class FeedEndpoints
         Guid userId,
         FriendsServiceClient friendsServiceClient,
         PhotoServiceClient photoServiceClient,
+        AuthServiceClient authServiceClient,
         CancellationToken cancellationToken)
     {
         if (userId == Guid.Empty)
@@ -40,6 +41,9 @@ public static class FeedEndpoints
 
         var photoResults = await Task.WhenAll(photoTasks);
 
+        var authorIds = photoResults.SelectMany(p => p).Select(p => p.AuthorUserId).Distinct();
+        var userNames = await authServiceClient.GetUserNamesAsync(authorIds, cancellationToken);
+
         var feed = photoResults
             .SelectMany(photos => photos)
             .OrderByDescending(photo => photo.CreatedAtUtc)
@@ -47,6 +51,7 @@ public static class FeedEndpoints
             .Select(photo => new FeedItemResponse(
                 photo.Id,
                 photo.AuthorUserId,
+                userNames.GetValueOrDefault(photo.AuthorUserId, "Пользователь"),
                 photo.Title,
                 photo.Description,
                 photo.ObjectKey,

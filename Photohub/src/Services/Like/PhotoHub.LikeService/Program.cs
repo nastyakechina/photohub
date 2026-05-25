@@ -42,6 +42,7 @@ builder.Services.AddScoped<AddLikeCommandHandler>();
 builder.Services.AddScoped<RemoveLikeCommandHandler>();
 builder.Services.AddScoped<GetLikeCountQueryHandler>();
 builder.Services.AddScoped<HasUserLikedQueryHandler>();
+builder.Services.AddScoped<GetLikeUsersQueryHandler>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

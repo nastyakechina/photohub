@@ -49,6 +49,14 @@ builder.Services.AddHttpClient<PhotoServiceClient>(client =>
     options.CircuitBreaker.MinimumThroughput = 5;
 });
 
+builder.Services.AddHttpClient<AuthServiceClient>(client =>
+{
+    var serviceUrl = builder.Configuration["Services:AuthServiceUrl"]
+        ?? "http://localhost:5001";
+    client.BaseAddress = new Uri(serviceUrl);
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

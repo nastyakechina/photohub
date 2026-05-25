@@ -25,6 +25,12 @@ public static class PhotoEndpoints
         group.MapPatch("/{photoId:guid}/preview", UpdatePreviewAsync)
             .WithName("UpdatePhotoPreview");
 
+        group.MapDelete("/{photoId:guid}", DeletePhotoAsync)
+            .WithName("DeletePhoto");
+
+        group.MapPut("/{photoId:guid}/description", UpdateDescriptionAsync)
+            .WithName("UpdatePhotoDescription");
+
         return group;
     }
 
@@ -173,6 +179,39 @@ public static class PhotoEndpoints
 
         return Results.NoContent();
     }
+
+    private static async Task<IResult> DeletePhotoAsync(
+        Guid photoId,
+        PhotoDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var photo = await dbContext.Photos
+            .FirstOrDefaultAsync(p => p.Id == photoId, cancellationToken);
+
+        if (photo is null)
+            return Results.NotFound(new { error = "Photo not found." });
+
+        dbContext.Photos.Remove(photo);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> UpdateDescriptionAsync(
+        Guid photoId,
+        UpdateDescriptionRequest request,
+        PhotoDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var photo = await dbContext.Photos
+            .FirstOrDefaultAsync(p => p.Id == photoId, cancellationToken);
+
+        if (photo is null)
+            return Results.NotFound(new { error = "Photo not found." });
+
+        photo.UpdateDescription(request.Description);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.Ok();
+    }
 }
 
 public sealed record CreatePhotoRequest(
@@ -184,6 +223,8 @@ public sealed record CreatePhotoRequest(
 public sealed record CreatePhotoResponse(Guid PhotoId);
 
 public sealed record UpdatePhotoPreviewRequest(string PreviewObjectKey);
+
+public sealed record UpdateDescriptionRequest(string? Description);
 
 public sealed record PhotoResponse(
     Guid Id,

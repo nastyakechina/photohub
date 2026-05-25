@@ -12,6 +12,7 @@ public static class LikeEndpoints
         group.MapDelete("/", DeleteLikeAsync).WithName("DeleteLike");
         group.MapGet("/photos/{photoId:guid}/count", GetLikeCountAsync).WithName("GetPhotoLikeCount");
         group.MapGet("/photos/{photoId:guid}/users/{userId:guid}", HasUserLikedPhotoAsync).WithName("HasUserLikedPhoto");
+        group.MapGet("/photos/{photoId:guid}/users", GetLikeUsersAsync).WithName("GetPhotoLikeUsers");
 
         return group;
     }
@@ -76,6 +77,18 @@ public static class LikeEndpoints
             cancellationToken);
 
         return Results.Ok(hasLiked);
+    }
+
+    private static async Task<IResult> GetLikeUsersAsync(
+        Guid photoId,
+        GetLikeUsersQueryHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (photoId == Guid.Empty)
+            return Results.BadRequest(new { error = "PhotoId is required." });
+
+        var userIds = await handler.HandleAsync(new GetLikeUsersQuery(photoId), cancellationToken);
+        return Results.Ok(userIds);
     }
 }
 
