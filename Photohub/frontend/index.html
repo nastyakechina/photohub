@@ -626,22 +626,24 @@ async function doUpload() {
   const file  = document.getElementById('u-file').files[0];
 
   if (!title) return alert2('msg-upload', 'Введите название', 'err');
+  if (!file)  return alert2('msg-upload', 'Выберите файл', 'err');
   clearAlert('msg-upload');
-
-  // Generate an objectKey so the record is created in the DB.
-  // In a real setup, upload the file to MinIO first and use the resulting key.
-  const objectKey = `${s.userId}/${uuid()}-${(file?.name || 'photo').replace(/\s+/g,'_')}`;
 
   const btn = document.querySelector('#page-upload .btn');
   btn.disabled = true;
   btn.textContent = 'Публикация...';
 
   try {
-    const r = await post(`${API.photos}`, {
-      authorUserId: s.userId,
-      title,
-      description: desc || null,
-      objectKey,
+    const fd = new FormData();
+    fd.append('authorUserId', s.userId);
+    fd.append('title', title);
+    fd.append('description', desc || '');
+    fd.append('file', file);
+
+    const r = await fetch(API.photos, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${s.token}` },
+      body: fd,
     });
 
     if (r.ok) {

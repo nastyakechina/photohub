@@ -139,12 +139,17 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: photohub
       RabbitMq__Password: photohub_password
+      MinIO__Endpoint: minio
+      MinIO__Port: "9000"
+      MinIO__AccessKey: ${MINIO_ROOT_USER}
+      MinIO__SecretKey: ${MINIO_ROOT_PASSWORD}
       Otlp__Endpoint: http://jaeger:4317
     ports:
       - "5003:8080"
     depends_on:
       - photo-db
       - rabbitmq
+      - minio
     networks:
       - photohub-network
 

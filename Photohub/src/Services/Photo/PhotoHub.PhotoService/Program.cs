@@ -1,3 +1,4 @@
+using Amazon.S3;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using PhotoHub.Observability;
@@ -41,6 +42,21 @@ builder.Services.AddMassTransit(busConfigurator =>
         configurator.ConfigureEndpoints(context);
     });
 });
+
+var minioEndpoint = builder.Configuration["MinIO:Endpoint"] ?? "localhost";
+var minioPort     = builder.Configuration["MinIO:Port"]     ?? "9000";
+var minioKey      = builder.Configuration["MinIO:AccessKey"] ?? "minioadmin";
+var minioSecret   = builder.Configuration["MinIO:SecretKey"] ?? "minioadmin123";
+
+builder.Services.AddSingleton<IAmazonS3>(new AmazonS3Client(
+    minioKey, minioSecret,
+    new AmazonS3Config
+    {
+        ServiceURL = $"http://{minioEndpoint}:{minioPort}",
+        ForcePathStyle = true,
+        AuthenticationRegion = "us-east-1",
+    }
+));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
