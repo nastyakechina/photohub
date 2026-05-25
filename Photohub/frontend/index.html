@@ -561,6 +561,8 @@ function logout() { s.clear(); go('auth'); }
 // ──────────────────────────────────────────────────────────
 // FEED
 // ──────────────────────────────────────────────────────────
+let feedFollowingIds = new Set();
+
 async function loadFeed() {
   const el = document.getElementById('feed-body');
   el.innerHTML = spinner();
@@ -568,6 +570,14 @@ async function loadFeed() {
     const r = await fetch(`${API.feed}/${s.userId}`, { headers: auth() });
     if (!r.ok) throw new Error(r.status);
     const items = await r.json();
+
+    try {
+      const fr = await fetch(`${API.friends}/${s.userId}/following`, { headers: auth() });
+      if (fr.ok) {
+        const ids = await fr.json();
+        feedFollowingIds = new Set(ids.map(id => String(id)));
+      }
+    } catch {}
 
     if (!items || items.length === 0) {
       el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
@@ -582,7 +592,7 @@ async function loadFeed() {
   }
 }
 
-// FeedItemResponse: { id, authorUserId, title, description, objectKey, previewObjectKey, createdAtUtc }
+// FeedItemResponse: { photoId, authorUserId, authorUserName, title, description, objectKey, previewObjectKey, createdAtUtc }
 function photoCard(p) {
   const id      = p.id || p.photoId || '';
   const userId  = p.authorUserId || '';
@@ -593,21 +603,32 @@ function photoCard(p) {
   const date    = p.createdAtUtc ? new Date(p.createdAtUtc).toLocaleDateString('ru-RU', {day:'numeric',month:'short',year:'numeric'}) : '';
   const imgKey  = p.previewObjectKey || p.objectKey || '';
   const imgUrl  = imgKey ? `${MINIO}/${MINIO_BUCKET}/${imgKey}` : '';
+  const isMine  = userId === s.userId;
+  const isFollowing = feedFollowingIds.has(String(userId));
 
   const imgHtml = imgUrl
-    ? `<img class="pc-img" src="${esc(imgUrl)}" alt="${esc(title)}" onerror="this.replaceWith(makePlaceholder('${esc(title)}'))">`
+    ? `<div onclick="openPhoto('${id}')" style="cursor:pointer">
+        <img class="pc-img" src="${esc(imgUrl)}" alt="${esc(title)}" onerror="this.replaceWith(makePlaceholder('${esc(title)}'))">
+      </div>`
     : `<div class="pc-placeholder">${svgImg()}<span>${esc(title)}</span></div>`;
 
-  const isMine = userId === s.userId;
+  const followBtn = !isMine
+    ? `<button class="follow-btn ${isFollowing ? 'following' : ''}"
+        id="feed-follow-${userId}"
+        onclick="toggleFeedFollow('${userId}')">
+        ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
+      </button>`
+    : '';
 
   return `<div class="card" id="card-${id}">
     <div class="pc-header">
       <div class="avatar">${initial}</div>
       <div class="pc-meta">
-        <div class="pc-author">${esc(author)}</div>
+        <span class="pc-author" style="cursor:pointer;text-decoration:underline"
+          onclick="openUserProfile('${userId}','${esc(author)}')">${esc(author)}</span>
         ${date ? `<div class="pc-date">${date}</div>` : ''}
       </div>
-      ${!isMine ? `<button class="follow-btn" id="follow-${userId}" onclick="doFollow('${userId}')">+ Подписаться</button>` : ''}
+      ${followBtn}
     </div>
     ${imgHtml}
     <div class="pc-body">
@@ -620,6 +641,56 @@ function photoCard(p) {
       </button>
     </div>
   </div>`;
+}
+
+async function toggleFeedFollow(authorId) {
+  const btn = document.getElementById(`feed-follow-${authorId}`);
+  const isFollowing = btn && btn.classList.contains('following');
+
+  if (isFollowing) {
+    if (!confirm('Отписаться от этого пользователя?')) return;
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    try {
+      const r = await fetch(`${API.friends}/follow`, {
+        method: 'DELETE',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followerId: s.userId, followingId: authorId }),
+      });
+      if (r.ok || r.status === 404) {
+        feedFollowingIds.delete(String(authorId));
+        _followingIds.delete(String(authorId));
+        if (btn) { btn.textContent = '+ Подписаться'; btn.classList.remove('following'); btn.disabled = false; }
+        toast('Вы отписались', 't-ok');
+      } else {
+        if (btn) { btn.disabled = false; }
+        toast('Ошибка при отписке', 't-err');
+      }
+    } catch {
+      if (btn) { btn.disabled = false; }
+      toast('Ошибка соединения', 't-err');
+    }
+  } else {
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    try {
+      const r = await fetch(`${API.friends}/follow`, {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followerId: s.userId, followingId: authorId }),
+      });
+      if (r.ok || r.status === 409) {
+        feedFollowingIds.add(String(authorId));
+        _followingIds.add(String(authorId));
+        if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = false; }
+        if (r.ok) toast('Вы подписались!', 't-ok');
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = '+ Подписаться'; }
+        toast('Ошибка при подписке', 't-err');
+      }
+    } catch {
+      if (btn) { btn.disabled = false; btn.textContent = '+ Подписаться'; }
+      toast('Ошибка соединения', 't-err');
+    }
+  }
 }
 
 async function fetchLikes(photoId) {
@@ -774,7 +845,6 @@ async function loadProfile() {
     <div class="profile-ava">${initial}</div>
     <div>
       <div class="profile-name">@${esc(s.userName)}</div>
-      <div class="profile-id">${s.userId}</div>
       <div class="profile-stats">
         <div><div class="stat-val" id="st-photos">–</div><div class="stat-lbl">Фото</div></div>
         <div style="cursor:pointer" onclick="openFollowersModal('${s.userId}','following')">
@@ -930,7 +1000,6 @@ async function openUserProfile(userId, userName) {
     <div class="profile-ava">${initial}</div>
     <div>
       <div class="profile-name">@${esc(userName)}</div>
-      <div class="profile-id">${userId}</div>
       <div class="profile-stats">
         <div><div class="stat-val" id="up-st-photos">–</div><div class="stat-lbl">Фото</div></div>
         <div style="cursor:pointer" onclick="openFollowersModal('${userId}','following')">
