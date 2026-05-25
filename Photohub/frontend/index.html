@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhotoHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:      #0a0a0a;
+      --surface: #111111;
+      --border:  #222222;
+      --accent:  #ff6b00;
+      --accent2: #ff8c33;
+      --text:    #ffffff;
+      --muted:   #888888;
+      --error:   #ef4444;
+      --ok:      #22c55e;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── NAVBAR ── */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
+      background: rgba(17,17,17,0.92);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      display: flex; align-items: center; padding: 0 24px; gap: 8px;
+      z-index: 200;
+    }
+    .nav-logo {
+      font-size: 17px; font-weight: 700; color: var(--accent);
+      cursor: pointer; margin-right: 8px; user-select: none;
+    }
+    .nav-sep { flex: 1; }
+    .nav-user { font-size: 13px; color: var(--muted); padding: 0 8px; }
+    .nav-btn {
+      background: none; border: none; font-family: inherit; font-size: 13px;
+      color: var(--muted); cursor: pointer; padding: 8px 14px;
+      border-radius: 8px; transition: color .15s, background .15s;
+    }
+    .nav-btn:hover { color: var(--text); background: var(--border); }
+    .nav-btn.active { color: var(--text); font-weight: 500; }
+    .nav-btn.danger { color: var(--error); }
+    .nav-btn.danger:hover { background: rgba(239,68,68,.1); color: var(--error); }
+
+    /* ── MAIN ── */
+    .main { padding-top: 56px; min-height: 100vh; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .container { max-width: 680px; margin: 0 auto; padding: 36px 20px; }
+    .narrow { max-width: 420px; margin: 0 auto; padding: 48px 20px; }
+
+    /* ── HEADINGS ── */
+    .page-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .page-sub   { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+    .tab-btn {
+      background: none; border: none; font-family: inherit; font-size: 14px;
+      font-weight: 500; color: var(--muted); cursor: pointer;
+      padding: 12px 20px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── FORM ── */
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; letter-spacing: .04em; text-transform: uppercase; }
+    .field input, .field textarea {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 11px 14px; color: var(--text);
+      font-family: inherit; font-size: 14px; outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { resize: vertical; min-height: 80px; }
+
+    .btn {
+      display: block; width: 100%; padding: 12px;
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 10px; font-family: inherit; font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: background .15s, opacity .15s;
+      margin-top: 6px;
+    }
+    .btn:hover { background: var(--accent2); }
+    .btn:disabled { opacity: .45; pointer-events: none; }
+
+    /* ── ALERT BANNER ── */
+    .alert { display: none; padding: 11px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+    .alert.show { display: block; }
+    .alert.err { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3); color: var(--error); }
+    .alert.ok  { background: rgba(34,197,94,.08);  border: 1px solid rgba(34,197,94,.3);  color: var(--ok); }
+
+    /* ── AUTH HERO ── */
+    .auth-hero { text-align: center; margin-bottom: 36px; }
+    .auth-hero h1 { font-size: 30px; font-weight: 700; }
+    .auth-hero h1 span { color: var(--accent); }
+    .auth-hero p { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+    }
+
+    /* ── PHOTO CARD ── */
+    .pc-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .pc-meta { flex: 1; min-width: 0; }
+    .pc-author { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pc-date   { font-size: 11px; color: var(--muted); }
+
+    .follow-btn {
+      background: none; border: 1px solid var(--border); border-radius: 20px;
+      font-family: inherit; font-size: 12px; color: var(--muted);
+      padding: 5px 14px; cursor: pointer; transition: all .15s; white-space: nowrap;
+    }
+    .follow-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .follow-btn.following { border-color: var(--accent); color: var(--accent); }
+
+    .pc-img {
+      width: 100%; aspect-ratio: 4/3; object-fit: cover;
+      background: #181818; display: block;
+    }
+    .pc-placeholder {
+      width: 100%; aspect-ratio: 4/3; background: #181818;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; color: var(--muted); font-size: 13px;
+    }
+    .pc-placeholder svg { opacity: .25; }
+
+    .pc-body { padding: 14px 16px 10px; }
+    .pc-title { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+    .pc-desc  { font-size: 13px; color: var(--muted); }
+
+    .pc-footer {
+      padding: 10px 12px; border-top: 1px solid var(--border);
+      display: flex; gap: 4px;
+    }
+    .like-btn {
+      background: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 13px; color: var(--muted); display: flex; align-items: center;
+      gap: 6px; padding: 6px 10px; border-radius: 8px; transition: all .15s;
+    }
+    .like-btn:hover { background: rgba(255,107,0,.08); color: var(--accent); }
+    .like-btn.liked { color: var(--accent); background: rgba(255,107,0,.08); }
+    .like-btn svg { flex-shrink: 0; }
+
+    /* ── UPLOAD DROP ── */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 12px;
+      padding: 36px 20px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; position: relative;
+      margin-bottom: 16px;
+    }
+    .drop-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: rgba(255,107,0,.04); }
+    .drop-icon { font-size: 32px; margin-bottom: 10px; opacity: .55; }
+    .drop-label { font-size: 14px; color: var(--muted); }
+    .drop-label b { color: var(--accent); font-weight: 500; }
+    .drop-hint { font-size: 12px; color: var(--muted); margin-top: 5px; opacity: .7; }
+
+    .preview-wrap { border-radius: 10px; overflow: hidden; margin-bottom: 16px; display: none; }
+    .preview-wrap img { width: 100%; max-height: 280px; object-fit: cover; display: block; }
+
+    /* ── PROFILE ── */
+    .profile-banner {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 28px; display: flex;
+      align-items: center; gap: 24px; margin-bottom: 28px;
+    }
+    .profile-ava {
+      width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent); color: #fff;
+      font-size: 28px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-name { font-size: 20px; font-weight: 700; }
+    .profile-id   { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 4px; }
+    .profile-stats { display: flex; gap: 24px; margin-top: 14px; }
+    .stat-val { font-size: 18px; font-weight: 700; }
+    .stat-lbl { font-size: 11px; color: var(--muted); }
+
+    .photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+    .grid-cell {
+      aspect-ratio: 1; background: #181818; border-radius: 4px;
+      overflow: hidden; cursor: pointer; position: relative;
+    }
+    .grid-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s; }
+    .grid-cell:hover img { transform: scale(1.06); }
+    .grid-placeholder {
+      width: 100%; height: 100%; display: flex; align-items: center;
+      justify-content: center; color: var(--muted); opacity: .3; font-size: 22px;
+    }
+
+    /* ── EMPTY & LOADING ── */
+    .empty { text-align: center; padding: 56px 0; color: var(--muted); }
+    .empty-icon { font-size: 42px; opacity: .3; margin-bottom: 14px; }
+    .empty-text { font-size: 14px; }
+
+    .spinner-wrap { display: flex; justify-content: center; padding: 48px; }
+    .spinner {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid rgba(255,107,0,.25); border-top-color: var(--accent);
+      animation: spin .65s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 22px; right: 22px; z-index: 999;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 18px; font-size: 13px;
+      max-width: 280px; transform: translateY(80px); opacity: 0;
+      transition: transform .25s, opacity .25s; pointer-events: none;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.t-ok  { border-color: rgba(34,197,94,.4);  color: var(--ok); }
+    .toast.t-err { border-color: rgba(239,68,68,.4); color: var(--error); }
+
+    /* ── SECTION LABEL ── */
+    .section-label {
+      font-size: 11px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="nav" id="nav">
+  <span class="nav-logo" onclick="go('feed')">▲ PhotoHub</span>
+  <div class="nav-sep"></div>
+  <div id="nav-inner"><!-- filled by JS --></div>
+</nav>
+
+<main class="main">
+
+  <!-- ── AUTH ── -->
+  <div class="page active" id="page-auth">
+    <div class="narrow">
+      <div class="auth-hero">
+        <h1>Photo<span>Hub</span></h1>
+        <p>Социальная сеть для публикации фотографий</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('login')">Войти</button>
+        <button class="tab-btn"        onclick="switchTab('register')">Регистрация</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div class="tab-pane active" id="tab-login">
+        <div class="alert" id="msg-login"></div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="l-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Пароль</label>
+          <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn" onclick="doLogin()">Войти</button>
+      </div>
+
+      <!-- REGISTER -->
+      <div class="tab-pane" id="tab-register">
+        <div class="alert" id="msg-register"></div>
+        <div class="field">
+          <label>Имя пользователя</label>
+          <input type="text" id="r-name" placeholder="coolphotographer" autocomplete="username">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="r-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Пароль (минимум 6 символов)</label>
+          <input type="password" id="r-pass" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <button class="btn" onclick="doRegister()">Создать аккаунт</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FEED ── -->
+  <div class="page" id="page-feed">
+    <div class="container">
+      <div class="page-title">Лента</div>
+      <div class="page-sub">Фотографии от людей, на которых вы подписаны</div>
+      <div id="feed-body"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ── UPLOAD ── -->
+  <div class="page" id="page-upload">
+    <div class="container" style="max-width:500px">
+      <div class="page-title">Новая публикация</div>
+      <div class="page-sub">Поделитесь своим снимком</div>
+
+      <div class="alert" id="msg-upload"></div>
+
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="u-file" accept="image/*" onchange="onFileChange(this)">
+        <div class="drop-icon">📸</div>
+        <div class="drop-label">Перетащите фото сюда или <b>выберите файл</b></div>
+        <div class="drop-hint">PNG, JPG, WEBP · до 10 MB</div>
+      </div>
+
+      <div class="preview-wrap" id="preview-wrap">
+        <img id="preview-img" src="" alt="">
+      </div>
+
+      <div class="field">
+        <label>Название *</label>
+        <input type="text" id="u-title" placeholder="Мой лучший снимок">
+      </div>
+      <div class="field">
+        <label>Описание</label>
+        <textarea id="u-desc" placeholder="Расскажите об этом фото..."></textarea>
+      </div>
+
+      <button class="btn" onclick="doUpload()">Опубликовать</button>
+    </div>
+  </div>
+
+  <!-- ── PROFILE ── -->
+  <div class="page" id="page-profile">
+    <div class="container">
+      <div class="profile-banner" id="profile-banner">
+        <div class="spinner-wrap" style="padding:0"><div class="spinner"></div></div>
+      </div>
+      <div class="section-label">Публикации</div>
+      <div id="profile-photos"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ──────────────────────────────────────────────────────────
+// CONFIG
+// ──────────────────────────────────────────────────────────
+const API = {
+  auth:    'http://localhost:5001/api/auth',
+  photos:  'http://localhost:5003/api/photos',
+  feed:    'http://localhost:5004/api/feed',
+  friends: 'http://localhost:5002/api/friends',
+  likes:   'http://localhost:5005/api/likes',
+};
+const MINIO = 'http://localhost:9000';
+const MINIO_BUCKET = 'photos';
+
+// ──────────────────────────────────────────────────────────
+// STATE
+// ──────────────────────────────────────────────────────────
+const s = {
+  get token()    { return localStorage.getItem('ph_token'); },
+  get userId()   { return localStorage.getItem('ph_userId'); },
+  get userName() { return localStorage.getItem('ph_userName'); },
+  save(token, id, name) {
+    localStorage.setItem('ph_token', token);
+    localStorage.setItem('ph_userId', id);
+    localStorage.setItem('ph_userName', name);
+  },
+  clear() {
+    ['ph_token','ph_userId','ph_userName'].forEach(k => localStorage.removeItem(k));
+  },
+};
+
+// ──────────────────────────────────────────────────────────
+// INIT
+// ──────────────────────────────────────────────────────────
+function init() {
+  s.token && s.userId ? go('feed') : go('auth');
+
+  // enter key on login
+  document.getElementById('l-pass').addEventListener('keydown', e => e.key === 'Enter' && doLogin());
+  document.getElementById('r-pass').addEventListener('keydown', e => e.key === 'Enter' && doRegister());
+
+  // drag and drop
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', ()  => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) {
+      const inp = document.getElementById('u-file');
+      const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files;
+      showPreview(f);
+    }
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// NAVIGATION
+// ──────────────────────────────────────────────────────────
+function go(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  renderNav(page);
+  if (page === 'feed')    loadFeed();
+  if (page === 'profile') loadProfile();
+}
+
+function renderNav(cur) {
+  const el = document.getElementById('nav-inner');
+  if (!s.token) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    navBtn('feed',    'Лента',     cur) +
+    navBtn('upload',  'Загрузить', cur) +
+    navBtn('profile', 'Профиль',   cur) +
+    `<span class="nav-user">@${esc(s.userName)}</span>` +
+    `<button class="nav-btn danger" onclick="logout()">Выйти</button>`;
+}
+
+function navBtn(page, label, cur) {
+  return `<button class="nav-btn ${cur===page?'active':''}" onclick="go('${page}')">${label}</button>`;
+}
+
+// ──────────────────────────────────────────────────────────
+// AUTH
+// ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', (tab==='login'&&i===0)||(tab==='register'&&i===1)));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+}
+
+async function doLogin() {
+  const email = v('l-email'), pass = v('l-pass');
+  if (!email || !pass) return alert2('msg-login', 'Заполните все поля', 'err');
+  clearAlert('msg-login');
+  try {
+    const r = await post(`${API.auth}/login`, { email, password: pass });
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      return alert2('msg-login', e.error || e.message || 'Неверный email или пароль', 'err');
+    }
+    const d = await r.json();
+    // LoginResponse: { accessToken, id, userName, email }
+    s.save(d.accessToken, d.id, d.userName);
+    go('feed');
+  } catch { alert2('msg-login', 'Сервер недоступен. Убедитесь, что стек запущен.', 'err'); }
+}
+
+async function doRegister() {
+  const userName = v('r-name'), email = v('r-email'), pass = v('r-pass');
+  if (!userName || !email || !pass) return alert2('msg-register', 'Заполните все поля', 'err');
+  clearAlert('msg-register');
+  try {
+    const r = await post(`${API.auth}/register`, { userName, email, password: pass });
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      return alert2('msg-register', e.error || e.message || 'Ошибка регистрации', 'err');
+    }
+    // AuthUserResponse: { id, userName, email } — no token, so auto-login
+    alert2('msg-register', 'Аккаунт создан! Выполняю вход...', 'ok');
+    document.getElementById('l-email').value = email;
+    document.getElementById('l-pass').value  = pass;
+    setTimeout(doLogin, 800);
+  } catch { alert2('msg-register', 'Сервер недоступен. Убедитесь, что стек запущен.', 'err'); }
+}
+
+function logout() { s.clear(); go('auth'); }
+
+// ──────────────────────────────────────────────────────────
+// FEED
+// ──────────────────────────────────────────────────────────
+async function loadFeed() {
+  const el = document.getElementById('feed-body');
+  el.innerHTML = spinner();
+  try {
+    const r = await fetch(`${API.feed}/${s.userId}`, { headers: auth() });
+    if (!r.ok) throw new Error(r.status);
+    const items = await r.json();
+
+    if (!items || items.length === 0) {
+      el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
+      return;
+    }
+    el.innerHTML = items.map(photoCard).join('');
+    items.forEach(p => fetchLikes(p.id || p.photoId));
+  } catch(e) {
+    el.innerHTML = empty('⚠️', e.message === '503'
+      ? 'FeedService недоступен — подписки не загружены'
+      : 'Не удалось загрузить ленту');
+  }
+}
+
+// FeedItemResponse: { id, authorUserId, title, description, objectKey, previewObjectKey, createdAtUtc }
+function photoCard(p) {
+  const id      = p.id || p.photoId || '';
+  const userId  = p.authorUserId || '';
+  const author  = p.authorUserName || p.userName || 'Пользователь';
+  const initial = author[0]?.toUpperCase() || '?';
+  const title   = p.title || 'Без названия';
+  const desc    = p.description || '';
+  const date    = p.createdAtUtc ? new Date(p.createdAtUtc).toLocaleDateString('ru-RU', {day:'numeric',month:'short',year:'numeric'}) : '';
+  const imgKey  = p.previewObjectKey || p.objectKey || '';
+  const imgUrl  = imgKey ? `${MINIO}/${MINIO_BUCKET}/${imgKey}` : '';
+
+  const imgHtml = imgUrl
+    ? `<img class="pc-img" src="${esc(imgUrl)}" alt="${esc(title)}" onerror="this.replaceWith(makePlaceholder('${esc(title)}'))">`
+    : `<div class="pc-placeholder">${svgImg()}<span>${esc(title)}</span></div>`;
+
+  const isMine = userId === s.userId;
+
+  return `<div class="card" id="card-${id}">
+    <div class="pc-header">
+      <div class="avatar">${initial}</div>
+      <div class="pc-meta">
+        <div class="pc-author">${esc(author)}</div>
+        ${date ? `<div class="pc-date">${date}</div>` : ''}
+      </div>
+      ${!isMine ? `<button class="follow-btn" id="follow-${userId}" onclick="doFollow('${userId}')">+ Подписаться</button>` : ''}
+    </div>
+    ${imgHtml}
+    <div class="pc-body">
+      <div class="pc-title">${esc(title)}</div>
+      ${desc ? `<div class="pc-desc">${esc(desc)}</div>` : ''}
+    </div>
+    <div class="pc-footer">
+      <button class="like-btn" id="like-${id}" onclick="toggleLike('${id}')">
+        ${svgHeart(false)}<span id="cnt-${id}">–</span>
+      </button>
+    </div>
+  </div>`;
+}
+
+async function fetchLikes(photoId) {
+  if (!photoId) return;
+  try {
+    const r = await fetch(`${API.likes}/photos/${photoId}/count`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const cnt = d.count ?? d.Count ?? 0;
+    const el = document.getElementById(`cnt-${photoId}`);
+    if (el) el.textContent = cnt;
+  } catch {}
+}
+
+const likedSet = new Set();
+
+async function toggleLike(photoId) {
+  if (!photoId) return;
+  const btn = document.getElementById(`like-${photoId}`);
+  if (!btn) return;
+  const liked = likedSet.has(photoId);
+  try {
+    if (liked) {
+      await fetch(API.likes, { method:'DELETE', headers:{...auth(),'Content-Type':'application/json'},
+        body: JSON.stringify({ photoId, userId: s.userId }) });
+      likedSet.delete(photoId);
+    } else {
+      const r = await fetch(API.likes, { method:'POST', headers:{...auth(),'Content-Type':'application/json'},
+        body: JSON.stringify({ photoId, userId: s.userId }) });
+      if (r.ok || r.status === 409) likedSet.add(photoId);
+    }
+  } catch {}
+  const nowLiked = likedSet.has(photoId);
+  btn.classList.toggle('liked', nowLiked);
+  btn.innerHTML = svgHeart(nowLiked) + `<span id="cnt-${photoId}">–</span>`;
+  fetchLikes(photoId);
+}
+
+async function doFollow(followeeId) {
+  if (!followeeId || followeeId === s.userId) return;
+  const btn = document.getElementById(`follow-${followeeId}`);
+  try {
+    const r = await fetch(`${API.friends}/follow`, {
+      method:'POST', headers:{...auth(),'Content-Type':'application/json'},
+      body: JSON.stringify({ followerId: s.userId, followeeId }),
+    });
+    if (r.ok) {
+      if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
+      toast('Вы подписались!', 't-ok');
+    } else {
+      toast('Уже подписаны или ошибка', 't-err');
+    }
+  } catch { toast('Ошибка соединения', 't-err'); }
+}
+
+// ──────────────────────────────────────────────────────────
+// UPLOAD
+// ──────────────────────────────────────────────────────────
+function onFileChange(inp) {
+  if (inp.files[0]) showPreview(inp.files[0]);
+}
+function showPreview(file) {
+  const wrap = document.getElementById('preview-wrap');
+  const img  = document.getElementById('preview-img');
+  const r = new FileReader();
+  r.onload = e => { img.src = e.target.result; wrap.style.display = 'block'; };
+  r.readAsDataURL(file);
+}
+
+async function doUpload() {
+  const title = v('u-title');
+  const desc  = v('u-desc');
+  const file  = document.getElementById('u-file').files[0];
+
+  if (!title) return alert2('msg-upload', 'Введите название', 'err');
+  clearAlert('msg-upload');
+
+  // Generate an objectKey so the record is created in the DB.
+  // In a real setup, upload the file to MinIO first and use the resulting key.
+  const objectKey = `${s.userId}/${uuid()}-${(file?.name || 'photo').replace(/\s+/g,'_')}`;
+
+  const btn = document.querySelector('#page-upload .btn');
+  btn.disabled = true;
+  btn.textContent = 'Публикация...';
+
+  try {
+    const r = await post(`${API.photos}`, {
+      authorUserId: s.userId,
+      title,
+      description: desc || null,
+      objectKey,
+    });
+
+    if (r.ok) {
+      alert2('msg-upload', 'Фото опубликовано!', 'ok');
+      document.getElementById('u-title').value = '';
+      document.getElementById('u-desc').value  = '';
+      document.getElementById('u-file').value  = '';
+      document.getElementById('preview-wrap').style.display = 'none';
+      toast('Фото опубликовано!', 't-ok');
+    } else {
+      const e = await r.json().catch(()=>({}));
+      alert2('msg-upload', e.error || e.message || 'Ошибка загрузки', 'err');
+    }
+  } catch { alert2('msg-upload', 'Сервер недоступен', 'err'); }
+
+  btn.disabled = false;
+  btn.textContent = 'Опубликовать';
+}
+
+// ──────────────────────────────────────────────────────────
+// PROFILE
+// ──────────────────────────────────────────────────────────
+async function loadProfile() {
+  const banner = document.getElementById('profile-banner');
+  const photosEl = document.getElementById('profile-photos');
+
+  const initial = (s.userName || '?')[0].toUpperCase();
+  banner.innerHTML = `
+    <div class="profile-ava">${initial}</div>
+    <div>
+      <div class="profile-name">@${esc(s.userName)}</div>
+      <div class="profile-id">${s.userId}</div>
+      <div class="profile-stats">
+        <div><div class="stat-val" id="st-photos">–</div><div class="stat-lbl">Фото</div></div>
+      </div>
+    </div>`;
+
+  photosEl.innerHTML = spinner();
+
+  try {
+    // correct route: /by-user/{userId}
+    const r = await fetch(`${API.photos}/by-user/${s.userId}`, { headers: auth() });
+    if (!r.ok) throw new Error();
+    const photos = await r.json();
+    const el = document.getElementById('st-photos');
+    if (el) el.textContent = photos.length;
+
+    if (!photos.length) { photosEl.innerHTML = empty('📷', 'Вы ещё ничего не публиковали'); return; }
+
+    photosEl.innerHTML = `<div class="photos-grid">${photos.map(gridCell).join('')}</div>`;
+  } catch {
+    photosEl.innerHTML = empty('⚠️', 'Не удалось загрузить фото');
+  }
+}
+
+// PhotoResponse: { id, authorUserId, title, description, objectKey, previewObjectKey, createdAtUtc }
+function gridCell(p) {
+  const key = p.previewObjectKey || p.objectKey || '';
+  const url = key ? `${MINIO}/${MINIO_BUCKET}/${key}` : '';
+  return `<div class="grid-cell" title="${esc(p.title||'')}">
+    ${url
+      ? `<img src="${esc(url)}" alt="${esc(p.title||'')}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'grid-placeholder',textContent:'🖼️'}))">`
+      : `<div class="grid-placeholder">🖼️</div>`}
+  </div>`;
+}
+
+// ──────────────────────────────────────────────────────────
+// HELPERS
+// ──────────────────────────────────────────────────────────
+function v(id)   { return document.getElementById(id)?.value.trim() || ''; }
+function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function auth()  { return s.token ? { Authorization: `Bearer ${s.token}` } : {}; }
+function post(url, body) {
+  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json',...auth()}, body:JSON.stringify(body) });
+}
+function uuid() {
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+}
+function spinner() { return '<div class="spinner-wrap"><div class="spinner"></div></div>'; }
+function empty(icon, text) {
+  return `<div class="empty"><div class="empty-icon">${icon}</div><div class="empty-text">${text}</div></div>`;
+}
+
+let _toastTimer;
+function toast(msg, cls = 't-ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${cls}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function alert2(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg; el.className = `alert ${type} show`;
+}
+function clearAlert(id) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'alert';
+}
+
+function svgHeart(filled) {
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="${filled?'#ff6b00':'none'}" stroke="${filled?'#ff6b00':'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+}
+function svgImg() {
+  return `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+}
+function makePlaceholder(title) {
+  const d = document.createElement('div');
+  d.className = 'pc-placeholder';
+  d.innerHTML = svgImg() + `<span>${esc(title)}</span>`;
+  return d;
+}
+
+// ──────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

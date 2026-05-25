@@ -279,6 +279,16 @@ services:
     networks:
       - photohub-network
 
+  frontend:
+    image: nginx:alpine
+    container_name: photohub-frontend
+    ports:
+      - "3001:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    networks:
+      - photohub-network
+
 networks:
   photohub-network:
     name: photohub-network

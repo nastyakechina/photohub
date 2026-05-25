@@ -5,6 +5,16 @@ using PhotoHub.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:3001")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 builder.AddPhotoHubObservability("PhotoHub.FriendsService");
 
 builder.Services.AddDbContext<FriendsDbContext>(options =>
@@ -25,6 +35,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UsePhotoHubObservability();
+app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {

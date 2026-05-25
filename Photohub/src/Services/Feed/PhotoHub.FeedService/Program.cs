@@ -5,6 +5,16 @@ using PhotoHub.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:3001")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 builder.AddPhotoHubObservability("PhotoHub.FeedService");
 
 builder.Services.AddHttpClient<FriendsServiceClient>(client =>
@@ -45,6 +55,7 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 app.UsePhotoHubObservability();
+app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {
