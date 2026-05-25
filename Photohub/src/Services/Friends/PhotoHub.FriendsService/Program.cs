@@ -18,6 +18,12 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<FriendsDbContext>();
+    db.Database.Migrate();
+}
+
 app.UsePhotoHubObservability();
 
 if (app.Environment.IsDevelopment())
