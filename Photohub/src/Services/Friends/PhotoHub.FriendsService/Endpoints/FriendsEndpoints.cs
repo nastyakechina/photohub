@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PhotoHub.FriendsService.Domain.Follows;
 using PhotoHub.FriendsService.Infrastructure.Persistence;
@@ -27,7 +28,7 @@ public static class FriendsEndpoints
     }
 
     private static async Task<IResult> FollowAsync(
-        FollowRequest request,
+        [FromBody] FollowRequest request,
         FriendsDbContext dbContext,
         CancellationToken cancellationToken)
     {
@@ -63,7 +64,7 @@ public static class FriendsEndpoints
     }
 
     private static async Task<IResult> UnfollowAsync(
-        FollowRequest request,
+        [FromBody] FollowRequest request,
         FriendsDbContext dbContext,
         CancellationToken cancellationToken)
     {

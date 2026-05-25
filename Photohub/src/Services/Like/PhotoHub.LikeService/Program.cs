@@ -46,6 +46,9 @@ builder.Services.AddScoped<HasUserLikedQueryHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())

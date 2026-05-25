@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using PhotoHub.LikeService.Application.Commands;
 using PhotoHub.LikeService.Application.Queries;
 
@@ -16,7 +17,7 @@ public static class LikeEndpoints
     }
 
     private static async Task<IResult> CreateLikeAsync(
-        LikeRequest request,
+        [FromBody] LikeRequest request,
         AddLikeCommandHandler handler,
         CancellationToken cancellationToken)
     {
@@ -34,7 +35,7 @@ public static class LikeEndpoints
     }
 
     private static async Task<IResult> DeleteLikeAsync(
-        LikeRequest request,
+        [FromBody] LikeRequest request,
         RemoveLikeCommandHandler handler,
         CancellationToken cancellationToken)
     {

@@ -52,6 +52,9 @@ builder.Services.AddHttpClient<PhotoServiceClient>(client =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+
 var app = builder.Build();
 
 app.UsePhotoHubObservability();
