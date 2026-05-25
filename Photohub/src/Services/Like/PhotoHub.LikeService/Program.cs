@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoHub.LikeService.Application.Commands;
+using PhotoHub.LikeService.Application.Queries;
 using PhotoHub.LikeService.Endpoints;
 using PhotoHub.LikeService.Infrastructure.Persistence;
 using PhotoHub.LikeService.Infrastructure.Redis;
@@ -24,6 +26,13 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 });
 
 builder.Services.AddScoped<LikeCounterCache>();
+
+// CQRS Handlers
+builder.Services.AddScoped<AddLikeCommandHandler>();
+builder.Services.AddScoped<RemoveLikeCommandHandler>();
+builder.Services.AddScoped<GetLikeCountQueryHandler>();
+builder.Services.AddScoped<HasUserLikedQueryHandler>();
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
