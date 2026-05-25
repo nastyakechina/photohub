@@ -463,8 +463,8 @@ async function doLogin() {
       return alert2('msg-login', e.error || e.message || 'Неверный email или пароль', 'err');
     }
     const d = await r.json();
-    // LoginResponse: { accessToken, id, userName, email }
-    s.save(d.accessToken, d.id, d.userName);
+    // LoginResponse: { accessToken, userId, userName, email }
+    s.save(d.accessToken, d.userId, d.userName);
     go('feed');
   } catch { alert2('msg-login', 'Сервер недоступен. Убедитесь, что стек запущен.', 'err'); }
 }
@@ -632,6 +632,10 @@ async function doUpload() {
   const btn = document.querySelector('#page-upload .btn');
   btn.disabled = true;
   btn.textContent = 'Публикация...';
+
+  console.log('userId:', s.userId);
+  console.log('token:', s.token);
+  console.log('file:', file);
 
   try {
     const fd = new FormData();
