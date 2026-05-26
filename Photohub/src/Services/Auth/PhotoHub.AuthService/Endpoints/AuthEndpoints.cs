@@ -165,14 +165,37 @@ public static class AuthEndpoints
 
     private static async Task<IResult> GetAllUsersAsync(
         AuthDbContext dbContext,
-        CancellationToken cancellationToken)
+        int page = 1,
+        int pageSize = 10,
+        string? search = null,
+        CancellationToken cancellationToken = default)
     {
-        var users = await dbContext.Users
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 50) pageSize = 10;
+
+        var query = dbContext.Users.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(u => EF.Functions.ILike(u.UserName, $"%{search}%"));
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        var users = await query
             .OrderBy(u => u.UserName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(u => new AuthUserResponse(u.Id, u.UserName, u.Email))
             .ToListAsync(cancellationToken);
 
-        return Results.Ok(users);
+        return Results.Ok(new
+        {
+            users,
+            page,
+            pageSize,
+            totalCount,
+            totalPages
+        });
     }
 }
 

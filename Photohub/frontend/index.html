@@ -782,6 +782,19 @@ function showPreview(file) {
   r.readAsDataURL(file);
 }
 
+function validatePhotoFile(file) {
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return `Недопустимый формат файла. Разрешены: JPEG, PNG, WEBP, GIF. Ваш файл: "${file.type || 'неизвестный формат'}"`;
+  }
+  if (file.size > MAX_SIZE_BYTES) {
+    return `Файл слишком большой: ${(file.size / 1024 / 1024).toFixed(1)} МБ. Максимум: 10 МБ.`;
+  }
+  return null;
+}
+
 async function doUpload() {
   const title = v('u-title');
   const desc  = v('u-desc');
@@ -789,6 +802,14 @@ async function doUpload() {
 
   if (!title) return alert2('msg-upload', 'Введите название', 'err');
   if (!file)  return alert2('msg-upload', 'Выберите файл', 'err');
+
+  const validationError = validatePhotoFile(file);
+  if (validationError) {
+    alert2('msg-upload', validationError, 'err');
+    toast(validationError, 't-err');
+    return;
+  }
+
   clearAlert('msg-upload');
 
   const btn = document.querySelector('#page-upload .btn');
@@ -821,7 +842,9 @@ async function doUpload() {
       toast('Фото опубликовано!', 't-ok');
     } else {
       const e = await r.json().catch(()=>({}));
-      alert2('msg-upload', e.error || e.message || 'Ошибка загрузки', 'err');
+      const msg = e.error || e.message || 'Ошибка загрузки';
+      alert2('msg-upload', msg, 'err');
+      toast(msg, 't-err');
     }
   } catch { alert2('msg-upload', 'Сервер недоступен', 'err'); }
 
@@ -920,57 +943,103 @@ function gridCellOwn(p) {
 // ──────────────────────────────────────────────────────────
 // PEOPLE
 // ──────────────────────────────────────────────────────────
-let allUsers = [];
+let peopleCurrentPage = 1;
+let peopleTotalPages = 1;
+let peopleSearchQuery = '';
+let peopleSearchTimer = null;
 
-async function loadPeople() {
+async function loadPeople(page = 1) {
+  peopleCurrentPage = page;
   const el = document.getElementById('people-body');
-  el.innerHTML = spinner();
-  const searchEl = document.getElementById('people-search');
-  if (searchEl) searchEl.value = '';
+
+  if (page === 1) {
+    el.innerHTML = `
+      <div id="people-list">${spinner()}</div>
+      <div id="people-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px"></div>`;
+  } else {
+    const listEl = document.getElementById('people-list');
+    if (listEl) listEl.innerHTML = spinner();
+  }
+
   try {
-    const r = await fetch(`${API.auth}/users`, { headers: auth() });
+    const params = new URLSearchParams({ page, pageSize: 10 });
+    if (peopleSearchQuery) params.set('search', peopleSearchQuery);
+
+    const r = await fetch(`${API.auth}/users?${params}`, { headers: auth() });
     if (!r.ok) throw new Error(r.status);
-    const users = await r.json();
-    allUsers = users.filter(u => String(u.userId) !== String(s.userId));
-    if (!allUsers.length) {
-      el.innerHTML = empty('👥', 'Пока нет других пользователей');
-      return;
+    const data = await r.json();
+
+    peopleTotalPages = data.totalPages || 1;
+    const users = (data.users || []).filter(u => String(u.userId || u.id) !== String(s.userId));
+
+    const list = document.getElementById('people-list');
+    if (!list) return;
+
+    if (!users.length) {
+      list.innerHTML = empty('👥', peopleSearchQuery ? 'Никого не найдено' : 'Пока нет других пользователей');
+    } else {
+      list.innerHTML = users.map(u => {
+        const uid = String(u.userId || u.id || '');
+        const name = u.userName || u.username || '';
+        const initial = (name || '?')[0].toUpperCase();
+        return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px">
+          <div class="avatar" style="flex-shrink:0;cursor:pointer"
+            onclick="openUserProfile('${uid}','${esc(name)}')">${initial}</div>
+          <div style="flex:1;min-width:0;cursor:pointer"
+            onclick="openUserProfile('${uid}','${esc(name)}')">
+            <div style="font-size:14px;font-weight:600">@${esc(name)}</div>
+            <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || '')}</div>
+          </div>
+          ${followBtn(uid)}
+        </div>`;
+      }).join('');
     }
-    await loadFollowingIds();
-    renderPeople(allUsers);
+
+    renderPeoplePagination(data.totalCount, data.totalPages, page);
   } catch {
-    el.innerHTML = empty('⚠️', 'Не удалось загрузить пользователей');
+    const list = document.getElementById('people-list');
+    if (list) list.innerHTML = empty('⚠️', 'Не удалось загрузить пользователей');
   }
 }
 
-function renderPeople(users) {
-  const el = document.getElementById('people-body');
-  if (!users.length) {
-    el.innerHTML = empty('🔍', 'Никого не нашлось');
-    return;
+function renderPeoplePagination(totalCount, totalPages, currentPage) {
+  const el = document.getElementById('people-pagination');
+  if (!el) return;
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  const btn = (label, page, active, disabled) =>
+    `<button style="background:${active ? 'var(--accent)' : 'var(--surface)'};border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};color:${active ? '#000' : 'var(--text)'};border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:13px;${active ? 'font-weight:600' : ''}"
+      ${disabled ? 'disabled' : ''} onclick="loadPeople(${page})">${label}</button>`;
+
+  const delta = 2;
+  const pages = [];
+  for (let i = Math.max(1, currentPage - delta); i <= Math.min(totalPages, currentPage + delta); i++)
+    pages.push(i);
+
+  let html = btn('←', currentPage - 1, false, currentPage === 1);
+
+  if (pages[0] > 1) {
+    html += btn('1', 1, false, false);
+    if (pages[0] > 2) html += `<span style="color:var(--muted)">…</span>`;
   }
-  el.innerHTML = users.map(u => {
-    const uid = String(u.userId);
-    const initial = (u.userName || '?')[0].toUpperCase();
-    return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px;cursor:pointer"
-        onclick="openUserProfile('${uid}','${esc(u.userName)}')">
-      <div class="avatar">${initial}</div>
-      <div style="flex:1">
-        <div style="font-size:14px;font-weight:600">@${esc(u.userName)}</div>
-        <div style="font-size:12px;color:var(--muted)">${esc(u.email)}</div>
-      </div>
-      ${followBtn(uid)}
-    </div>`;
-  }).join('');
+
+  pages.forEach(p => { html += btn(p, p, p === currentPage, false); });
+
+  if (pages[pages.length - 1] < totalPages) {
+    if (pages[pages.length - 1] < totalPages - 1) html += `<span style="color:var(--muted)">…</span>`;
+    html += btn(totalPages, totalPages, false, false);
+  }
+
+  html += btn('→', currentPage + 1, false, currentPage === totalPages);
+  html += `<span style="color:var(--muted);font-size:12px;margin-left:4px">${totalCount} чел.</span>`;
+
+  el.innerHTML = html;
 }
 
-function filterPeople(q) {
-  const query = q.toLowerCase();
-  const filtered = allUsers.filter(u =>
-    u.userName.toLowerCase().includes(query) ||
-    (u.email || '').toLowerCase().includes(query)
-  );
-  renderPeople(filtered);
+function filterPeople(query) {
+  clearTimeout(peopleSearchTimer);
+  peopleSearchQuery = query.trim();
+  peopleSearchTimer = setTimeout(() => loadPeople(1), 300);
 }
 
 async function openUserProfile(userId, userName) {
@@ -1115,6 +1184,28 @@ async function editPhotoDesc(photoId, currentDesc) {
 }
 
 // ──────────────────────────────────────────────────────────
+// HELPERS
+// ──────────────────────────────────────────────────────────
+async function fetchUsersMap(userIds) {
+  const idSet = new Set(userIds.map(String));
+  const result = {};
+  let page = 1, totalPages = 1;
+  do {
+    const r = await fetch(`${API.auth}/users?page=${page}&pageSize=50`, { headers: auth() });
+    if (!r.ok) break;
+    const data = await r.json();
+    totalPages = data.totalPages ?? 1;
+    for (const u of (data.users || [])) {
+      const id = String(u.userId || u.id);
+      if (idSet.has(id)) result[id] = u;
+    }
+    if (Object.keys(result).length >= idSet.size) break;
+    page++;
+  } while (page <= totalPages);
+  return result;
+}
+
+// ──────────────────────────────────────────────────────────
 // FOLLOWERS MODAL
 // ──────────────────────────────────────────────────────────
 function closeFollowersModal() {
@@ -1140,9 +1231,7 @@ async function openFollowersModal(userId, type) {
       return;
     }
 
-    const usersR = await fetch(`${API.auth}/users`, { headers: auth() });
-    const allUsersData = usersR.ok ? await usersR.json() : [];
-    const usersMap = Object.fromEntries(allUsersData.map(u => [String(u.userId || u.id), u]));
+    const usersMap = await fetchUsersMap(ids);
 
     body.innerHTML = ids.map(id => {
       const u = usersMap[String(id)];
@@ -1223,9 +1312,7 @@ async function loadPhotoLikers(photoId) {
       el.innerHTML = '<div style="color:var(--muted);font-size:13px">Пока никто не лайкнул</div>';
       return;
     }
-    const usersR = await fetch(`${API.auth}/users`, { headers: auth() });
-    const allUsersData = usersR.ok ? await usersR.json() : [];
-    const usersMap = Object.fromEntries(allUsersData.map(u => [String(u.userId || u.id), u]));
+    const usersMap = await fetchUsersMap(likerIds);
 
     el.innerHTML = likerIds.map(id => {
       const u = usersMap[String(id)];

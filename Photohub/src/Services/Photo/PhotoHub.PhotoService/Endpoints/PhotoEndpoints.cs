@@ -58,14 +58,36 @@ public static class PhotoEndpoints
             return Results.BadRequest(new { error = "title is required." });
 
         if (file is null || file.Length == 0)
-            return Results.BadRequest(new { error = "file is required." });
+            return Results.BadRequest(new { error = "Файл не выбран." });
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        var objectKey = $"{authorUserId}/{Guid.NewGuid()}{ext}";
+        var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp", "image/gif" };
+        if (!allowedTypes.Contains(file.ContentType.ToLower()))
+            return Results.BadRequest(new { error = $"Недопустимый формат файла: {file.ContentType}. Разрешены: JPEG, PNG, WEBP, GIF." });
+
+        const long maxSizeBytes = 10 * 1024 * 1024;
+        if (file.Length > maxSizeBytes)
+            return Results.BadRequest(new { error = $"Файл слишком большой ({file.Length / 1024 / 1024} МБ). Максимум: 10 МБ." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms, cancellationToken);
         ms.Position = 0;
+
+        var header = new byte[4];
+        _ = await ms.ReadAsync(header, 0, 4, cancellationToken);
+        ms.Position = 0;
+
+        var isValidImage =
+            (header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF) ||
+            (header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47) ||
+            (header[0] == 0x47 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x38) ||
+            (header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46);
+
+        if (!isValidImage)
+            return Results.BadRequest(new { error = "Файл не является изображением. Содержимое файла не соответствует заявленному формату." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var objectKey = $"{authorUserId}/{Guid.NewGuid()}{ext}";
+
         await s3.PutObjectAsync(new PutObjectRequest
         {
             BucketName = "photos",
