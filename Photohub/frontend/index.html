@@ -44,7 +44,8 @@
       cursor: pointer; margin-right: 8px; user-select: none;
     }
     .nav-sep { flex: 1; }
-    .nav-user { font-size: 13px; color: var(--muted); padding: 0 8px; }
+    .nav-user { font-size: 13px; color: var(--muted); padding: 0 8px; cursor: pointer; }
+    .nav-user:hover { color: var(--text); }
     .nav-btn {
       background: none; border: none; font-family: inherit; font-size: 13px;
       color: var(--muted); cursor: pointer; padding: 8px 14px;
@@ -197,7 +198,6 @@
       display: flex; align-items: center; justify-content: center;
     }
     .profile-name { font-size: 20px; font-weight: 700; }
-    .profile-id   { font-size: 11px; color: var(--muted); font-family: monospace; margin-top: 4px; }
     .profile-stats { display: flex; gap: 24px; margin-top: 14px; }
     .stat-val { font-size: 18px; font-weight: 700; }
     .stat-lbl { font-size: 11px; color: var(--muted); }
@@ -371,7 +371,7 @@
 <!-- ── USER PROFILE ── -->
 <div class="page" id="page-user-profile">
   <div class="container">
-    <button onclick="go('people')" style="background:none;border:none;color:var(--primary);cursor:pointer;margin-bottom:16px;font-size:14px;padding:0">← Назад к людям</button>
+    <button onclick="go(prevPage)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-family:inherit;font-size:13px;padding:0;margin-bottom:20px">← Назад</button>
     <div class="profile-banner" id="up-profile-banner">
       <div class="spinner-wrap" style="padding:0"><div class="spinner"></div></div>
     </div>
@@ -459,6 +459,93 @@ const s = {
 };
 
 // ──────────────────────────────────────────────────────────
+// FOLLOW STATE — единый источник правды
+// ──────────────────────────────────────────────────────────
+const followingIds = new Set();
+let prevPage = 'feed';
+
+async function loadFollowingIds() {
+  if (!s.userId) return;
+  try {
+    const r = await fetch(`${API.friends}/${s.userId}/following`, { headers: auth() });
+    if (r.ok) {
+      const ids = await r.json();
+      followingIds.clear();
+      ids.forEach(id => followingIds.add(String(id)));
+    }
+  } catch {}
+}
+
+async function toggleFollow(targetUserId) {
+  if (!targetUserId || targetUserId === s.userId) return;
+
+  const isFollowing = followingIds.has(String(targetUserId));
+
+  if (isFollowing) {
+    if (!confirm('Отписаться от этого пользователя?')) return;
+  }
+
+  setAllFollowButtons(targetUserId, null, '...', true);
+
+  try {
+    const r = await fetch(`${API.friends}/follow`, {
+      method: isFollowing ? 'DELETE' : 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ followerId: s.userId, followingId: targetUserId }),
+    });
+
+    if (r.ok || r.status === 409 || r.status === 404) {
+      if (isFollowing) {
+        followingIds.delete(String(targetUserId));
+        setAllFollowButtons(targetUserId, false, '+ Подписаться', false);
+        toast('Вы отписались', 't-ok');
+      } else {
+        followingIds.add(String(targetUserId));
+        setAllFollowButtons(targetUserId, true, '✓ Подписан', false);
+        if (r.ok) toast('Вы подписались!', 't-ok');
+      }
+    } else {
+      setAllFollowButtons(targetUserId, isFollowing, isFollowing ? '✓ Подписан' : '+ Подписаться', false);
+      toast('Ошибка: ' + r.status, 't-err');
+    }
+  } catch {
+    setAllFollowButtons(targetUserId, isFollowing, isFollowing ? '✓ Подписан' : '+ Подписаться', false);
+    toast('Ошибка соединения', 't-err');
+  }
+}
+
+function setAllFollowButtons(targetUserId, isFollowing, text, disabled) {
+  document.querySelectorAll(`[data-follow-id="${targetUserId}"]`).forEach(btn => {
+    btn.textContent = text;
+    btn.disabled = disabled;
+    if (isFollowing === true) {
+      btn.classList.add('following');
+    } else if (isFollowing === false) {
+      btn.classList.remove('following');
+    }
+  });
+}
+
+function followBtn(userId, extraStyle = '') {
+  if (!userId || userId === s.userId) return '';
+  const isFollowing = followingIds.has(String(userId));
+  return `<button
+    class="follow-btn${isFollowing ? ' following' : ''}"
+    data-follow-id="${userId}"
+    onclick="event.stopPropagation();toggleFollow('${userId}')"
+    style="${extraStyle}">
+    ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
+  </button>`;
+}
+
+function userLink(userId, userName, extraStyle = '') {
+  const name = userName || 'Пользователь';
+  return `<span
+    onclick="event.stopPropagation();openUserProfile('${userId}','${esc(name)}')"
+    style="cursor:pointer;${extraStyle}">${esc(name)}</span>`;
+}
+
+// ──────────────────────────────────────────────────────────
 // INIT
 // ──────────────────────────────────────────────────────────
 function init() {
@@ -503,7 +590,7 @@ function renderNav(cur) {
     navBtn('people',  'Люди',      cur) +
     navBtn('upload',  'Загрузить', cur) +
     navBtn('profile', 'Профиль',   cur) +
-    `<span class="nav-user">@${esc(s.userName)}</span>` +
+    `<span class="nav-user" onclick="go('profile')">@${esc(s.userName)}</span>` +
     `<button class="nav-btn danger" onclick="logout()">Выйти</button>`;
 }
 
@@ -532,8 +619,8 @@ async function doLogin() {
       return alert2('msg-login', e.error || e.message || 'Неверный email или пароль', 'err');
     }
     const d = await r.json();
-    // LoginResponse: { accessToken, userId, userName, email }
     s.save(d.accessToken, d.userId, d.userName);
+    loadFollowingIds();
     go('feed');
   } catch { alert2('msg-login', 'Сервер недоступен. Убедитесь, что стек запущен.', 'err'); }
 }
@@ -548,7 +635,6 @@ async function doRegister() {
       const e = await r.json().catch(()=>({}));
       return alert2('msg-register', e.error || e.message || 'Ошибка регистрации', 'err');
     }
-    // AuthUserResponse: { id, userName, email } — no token, so auto-login
     alert2('msg-register', 'Аккаунт создан! Выполняю вход...', 'ok');
     document.getElementById('l-email').value = email;
     document.getElementById('l-pass').value  = pass;
@@ -561,23 +647,14 @@ function logout() { s.clear(); go('auth'); }
 // ──────────────────────────────────────────────────────────
 // FEED
 // ──────────────────────────────────────────────────────────
-let feedFollowingIds = new Set();
-
 async function loadFeed() {
   const el = document.getElementById('feed-body');
   el.innerHTML = spinner();
+  await loadFollowingIds();
   try {
     const r = await fetch(`${API.feed}/${s.userId}`, { headers: auth() });
     if (!r.ok) throw new Error(r.status);
     const items = await r.json();
-
-    try {
-      const fr = await fetch(`${API.friends}/${s.userId}/following`, { headers: auth() });
-      if (fr.ok) {
-        const ids = await fr.json();
-        feedFollowingIds = new Set(ids.map(id => String(id)));
-      }
-    } catch {}
 
     if (!items || items.length === 0) {
       el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
@@ -603,8 +680,6 @@ function photoCard(p) {
   const date    = p.createdAtUtc ? new Date(p.createdAtUtc).toLocaleDateString('ru-RU', {day:'numeric',month:'short',year:'numeric'}) : '';
   const imgKey  = p.previewObjectKey || p.objectKey || '';
   const imgUrl  = imgKey ? `${MINIO}/${MINIO_BUCKET}/${imgKey}` : '';
-  const isMine  = userId === s.userId;
-  const isFollowing = feedFollowingIds.has(String(userId));
 
   const imgHtml = imgUrl
     ? `<div onclick="openPhoto('${id}')" style="cursor:pointer">
@@ -612,23 +687,14 @@ function photoCard(p) {
       </div>`
     : `<div class="pc-placeholder">${svgImg()}<span>${esc(title)}</span></div>`;
 
-  const followBtn = !isMine
-    ? `<button class="follow-btn ${isFollowing ? 'following' : ''}"
-        id="feed-follow-${userId}"
-        onclick="toggleFeedFollow('${userId}')">
-        ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
-      </button>`
-    : '';
-
   return `<div class="card" id="card-${id}">
     <div class="pc-header">
-      <div class="avatar">${initial}</div>
+      <div class="avatar" style="cursor:pointer" onclick="openUserProfile('${userId}','${esc(author)}')">${initial}</div>
       <div class="pc-meta">
-        <span class="pc-author" style="cursor:pointer;text-decoration:underline"
-          onclick="openUserProfile('${userId}','${esc(author)}')">${esc(author)}</span>
+        ${userLink(userId, author, 'font-size:13px;font-weight:600')}
         ${date ? `<div class="pc-date">${date}</div>` : ''}
       </div>
-      ${followBtn}
+      ${followBtn(userId)}
     </div>
     ${imgHtml}
     <div class="pc-body">
@@ -643,60 +709,9 @@ function photoCard(p) {
   </div>`;
 }
 
-async function toggleFeedFollow(authorId) {
-  const btn = document.getElementById(`feed-follow-${authorId}`);
-  const isFollowing = btn && btn.classList.contains('following');
-
-  if (isFollowing) {
-    if (!confirm('Отписаться от этого пользователя?')) return;
-    if (btn) { btn.disabled = true; btn.textContent = '...'; }
-    try {
-      const r = await fetch(`${API.friends}/follow`, {
-        method: 'DELETE',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followerId: s.userId, followingId: authorId }),
-      });
-      if (r.ok || r.status === 404) {
-        feedFollowingIds.delete(String(authorId));
-        _followingIds.delete(String(authorId));
-        if (btn) { btn.textContent = '+ Подписаться'; btn.classList.remove('following'); btn.disabled = false; }
-        toast('Вы отписались', 't-ok');
-      } else {
-        if (btn) { btn.disabled = false; }
-        toast('Ошибка при отписке', 't-err');
-      }
-    } catch {
-      if (btn) { btn.disabled = false; }
-      toast('Ошибка соединения', 't-err');
-    }
-  } else {
-    if (btn) { btn.disabled = true; btn.textContent = '...'; }
-    try {
-      const r = await fetch(`${API.friends}/follow`, {
-        method: 'POST',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followerId: s.userId, followingId: authorId }),
-      });
-      if (r.ok || r.status === 409) {
-        feedFollowingIds.add(String(authorId));
-        _followingIds.add(String(authorId));
-        if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = false; }
-        if (r.ok) toast('Вы подписались!', 't-ok');
-      } else {
-        if (btn) { btn.disabled = false; btn.textContent = '+ Подписаться'; }
-        toast('Ошибка при подписке', 't-err');
-      }
-    } catch {
-      if (btn) { btn.disabled = false; btn.textContent = '+ Подписаться'; }
-      toast('Ошибка соединения', 't-err');
-    }
-  }
-}
-
 async function fetchLikes(photoId) {
   if (!photoId) return;
   try {
-    // Получаем счётчик
     const r = await fetch(`${API.likes}/photos/${photoId}/count`);
     if (r.ok) {
       const d = await r.json();
@@ -704,7 +719,6 @@ async function fetchLikes(photoId) {
       const el = document.getElementById(`cnt-${photoId}`);
       if (el) el.textContent = cnt;
     }
-    // Проверяем, лайкнул ли текущий пользователь
     if (s.userId) {
       const r2 = await fetch(`${API.likes}/photos/${photoId}/users/${s.userId}`);
       if (r2.ok) {
@@ -749,27 +763,9 @@ async function toggleLike(photoId) {
   } catch {}
   const nowLiked = likedSet.has(photoId);
   btn.classList.toggle('liked', nowLiked);
-  // Обновляем только SVG иконку, НЕ трогая span с счётчиком
   const svgEl = btn.querySelector('svg');
   if (svgEl) svgEl.outerHTML = svgHeart(nowLiked);
   fetchLikes(photoId);
-}
-
-async function doFollow(followeeId) {
-  if (!followeeId || followeeId === s.userId) return;
-  const btn = document.getElementById(`follow-${followeeId}`);
-  try {
-    const r = await fetch(`${API.friends}/follow`, {
-      method:'POST', headers:{...auth(),'Content-Type':'application/json'},
-      body: JSON.stringify({ followerId: s.userId, followingId: followeeId }),
-    });
-    if (r.ok) {
-      if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
-      toast('Вы подписались!', 't-ok');
-    } else {
-      toast('Уже подписаны или ошибка', 't-err');
-    }
-  } catch { toast('Ошибка соединения', 't-err'); }
 }
 
 // ──────────────────────────────────────────────────────────
@@ -925,7 +921,6 @@ function gridCellOwn(p) {
 // PEOPLE
 // ──────────────────────────────────────────────────────────
 let allUsers = [];
-let _followingIds = new Set();
 
 async function loadPeople() {
   const el = document.getElementById('people-body');
@@ -941,13 +936,7 @@ async function loadPeople() {
       el.innerHTML = empty('👥', 'Пока нет других пользователей');
       return;
     }
-    try {
-      const fr = await fetch(`${API.friends}/${s.userId}/following`);
-      if (fr.ok) {
-        const ids = await fr.json();
-        _followingIds = new Set(ids.map(id => String(id)));
-      }
-    } catch {}
+    await loadFollowingIds();
     renderPeople(allUsers);
   } catch {
     el.innerHTML = empty('⚠️', 'Не удалось загрузить пользователей');
@@ -961,21 +950,16 @@ function renderPeople(users) {
     return;
   }
   el.innerHTML = users.map(u => {
-    const isFollowing = _followingIds.has(String(u.userId));
+    const uid = String(u.userId);
     const initial = (u.userName || '?')[0].toUpperCase();
     return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px;cursor:pointer"
-        onclick="openUserProfile('${u.userId}','${esc(u.userName)}')">
+        onclick="openUserProfile('${uid}','${esc(u.userName)}')">
       <div class="avatar">${initial}</div>
       <div style="flex:1">
         <div style="font-size:14px;font-weight:600">@${esc(u.userName)}</div>
         <div style="font-size:12px;color:var(--muted)">${esc(u.email)}</div>
       </div>
-      <button class="follow-btn ${isFollowing ? 'following' : ''}"
-        id="follow-${u.userId}"
-        onclick="event.stopPropagation();doFollowPeople('${u.userId}')"
-        ${isFollowing ? 'disabled' : ''}>
-        ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
-      </button>
+      ${followBtn(uid)}
     </div>`;
   }).join('');
 }
@@ -990,15 +974,16 @@ function filterPeople(q) {
 }
 
 async function openUserProfile(userId, userName) {
+  prevPage = document.querySelector('.page.active')?.id?.replace('page-', '') || 'feed';
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-user-profile').classList.add('active');
 
   const initial = (userName || '?')[0].toUpperCase();
-  const isFollowing = _followingIds.has(String(userId));
   const banner = document.getElementById('up-profile-banner');
   banner.innerHTML = `
     <div class="profile-ava">${initial}</div>
-    <div>
+    <div style="flex:1">
       <div class="profile-name">@${esc(userName)}</div>
       <div class="profile-stats">
         <div><div class="stat-val" id="up-st-photos">–</div><div class="stat-lbl">Фото</div></div>
@@ -1010,11 +995,7 @@ async function openUserProfile(userId, userName) {
         </div>
       </div>
       <div style="margin-top:14px">
-        <button class="follow-btn${isFollowing ? ' following' : ''}" id="up-follow-btn"
-          onclick="doFollowProfile('${userId}')"
-          ${isFollowing ? 'disabled' : ''}>
-          ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
-        </button>
+        ${followBtn(userId, 'margin-top:0')}
       </div>
     </div>`;
 
@@ -1045,64 +1026,6 @@ async function openUserProfile(userId, userName) {
       if (el) el.textContent = following.length;
     }
   } catch {}
-}
-
-async function doFollowProfile(userId) {
-  const btn = document.getElementById('up-follow-btn');
-  const isFollowing = btn && btn.classList.contains('following');
-
-  if (isFollowing) {
-    if (!confirm('Отписаться от этого пользователя?')) return;
-    if (btn) { btn.disabled = true; btn.textContent = '...'; }
-    try {
-      const r = await fetch(`${API.friends}/follow`, {
-        method: 'DELETE',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followerId: s.userId, followingId: userId }),
-      });
-      if (r.ok || r.status === 404) {
-        _followingIds.delete(String(userId));
-        if (btn) { btn.textContent = '+ Подписаться'; btn.classList.remove('following'); btn.disabled = false; }
-        toast('Вы отписались', 't-ok');
-      } else {
-        if (btn) { btn.disabled = false; }
-        toast('Ошибка при отписке', 't-err');
-      }
-    } catch {
-      if (btn) { btn.disabled = false; }
-      toast('Ошибка соединения', 't-err');
-    }
-  } else {
-    await doFollowPeople(userId);
-    const followBtn = document.getElementById(`follow-${userId}`);
-    if (followBtn && followBtn.classList.contains('following')) {
-      if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
-    }
-  }
-}
-
-async function doFollowPeople(followeeId) {
-  if (!followeeId || String(followeeId) === String(s.userId)) return;
-  const btn = document.getElementById(`follow-${followeeId}`);
-  if (btn) { btn.disabled = true; btn.textContent = '...'; }
-  try {
-    const r = await fetch(`${API.friends}/follow`, {
-      method: 'POST',
-      headers: { ...auth(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ followerId: s.userId, followingId: followeeId }),
-    });
-    if (r.ok || r.status === 409) {
-      _followingIds.add(String(followeeId));
-      if (btn) { btn.textContent = '✓ Подписан'; btn.classList.add('following'); btn.disabled = true; }
-      if (r.ok) toast('Вы подписались!', 't-ok');
-    } else {
-      if (btn) { btn.disabled = false; btn.textContent = '+ Подписаться'; }
-      toast('Ошибка при подписке: ' + r.status, 't-err');
-    }
-  } catch {
-    if (btn) { btn.disabled = false; btn.textContent = '+ Подписаться'; }
-    toast('Ошибка соединения', 't-err');
-  }
 }
 
 // ──────────────────────────────────────────────────────────
@@ -1218,17 +1141,20 @@ async function openFollowersModal(userId, type) {
     }
 
     const usersR = await fetch(`${API.auth}/users`, { headers: auth() });
-    const allUsers = usersR.ok ? await usersR.json() : [];
-    const usersMap = Object.fromEntries(allUsers.map(u => [String(u.userId || u.id), u]));
+    const allUsersData = usersR.ok ? await usersR.json() : [];
+    const usersMap = Object.fromEntries(allUsersData.map(u => [String(u.userId || u.id), u]));
 
     body.innerHTML = ids.map(id => {
       const u = usersMap[String(id)];
       const name = u ? (u.userName || u.username || 'Пользователь') : String(id).slice(0, 8) + '...';
       const initial = name[0].toUpperCase();
-      return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;background:var(--bg)"
-        onclick="closeFollowersModal();openUserProfile('${id}','${esc(name)}')">
-        <div class="avatar" style="width:36px;height:36px;font-size:14px">${initial}</div>
-        <div style="font-size:14px;font-weight:500">@${esc(name)}</div>
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;background:var(--bg);justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:12px;cursor:pointer;flex:1;min-width:0"
+          onclick="closeFollowersModal();openUserProfile('${id}','${esc(name)}')">
+          <div class="avatar" style="width:36px;height:36px;font-size:14px;flex-shrink:0">${initial}</div>
+          ${userLink(id, '@' + name, 'font-size:14px;font-weight:500')}
+        </div>
+        ${followBtn(id, 'font-size:12px;padding:4px 10px')}
       </div>`;
     }).join('');
   } catch {
@@ -1298,16 +1224,20 @@ async function loadPhotoLikers(photoId) {
       return;
     }
     const usersR = await fetch(`${API.auth}/users`, { headers: auth() });
-    const allUsers = usersR.ok ? await usersR.json() : [];
-    const usersMap = Object.fromEntries(allUsers.map(u => [String(u.userId || u.id), u]));
+    const allUsersData = usersR.ok ? await usersR.json() : [];
+    const usersMap = Object.fromEntries(allUsersData.map(u => [String(u.userId || u.id), u]));
 
     el.innerHTML = likerIds.map(id => {
       const u = usersMap[String(id)];
       const name = u ? (u.userName || 'Пользователь') : 'Пользователь';
       const initial = name[0].toUpperCase();
-      return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
-        <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initial}</div>
-        <div style="font-size:13px">@${esc(name)}</div>
+      return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer"
+          onclick="closePhotoModal();openUserProfile('${id}','${esc(name)}')">
+          <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initial}</div>
+          ${userLink(id, '@' + name)}
+        </div>
+        ${followBtn(id, 'font-size:12px;padding:4px 10px')}
       </div>`;
     }).join('');
   } catch {
