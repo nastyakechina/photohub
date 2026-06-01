@@ -1,3 +1,4 @@
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using PhotoHub.FriendsService.Endpoints;
 using PhotoHub.FriendsService.Infrastructure.Persistence;
@@ -21,6 +22,24 @@ builder.Services.AddDbContext<FriendsDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
     options.UseNpgsql(connectionString);
+});
+
+builder.Services.AddMassTransit(busConfigurator =>
+{
+    busConfigurator.UsingRabbitMq((context, configurator) =>
+    {
+        var host = builder.Configuration["RabbitMq:Host"] ?? "localhost";
+        var username = builder.Configuration["RabbitMq:Username"] ?? "photohub";
+        var password = builder.Configuration["RabbitMq:Password"] ?? "photohub_password";
+
+        configurator.Host(host, "/", h =>
+        {
+            h.Username(username);
+            h.Password(password);
+        });
+
+        configurator.ConfigureEndpoints(context);
+    });
 });
 
 builder.Services.AddEndpointsApiExplorer();

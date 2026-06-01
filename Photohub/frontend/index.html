@@ -499,10 +499,20 @@ async function toggleFollow(targetUserId) {
         followingIds.delete(String(targetUserId));
         setAllFollowButtons(targetUserId, false, '+ Подписаться', false);
         toast('Вы отписались', 't-ok');
+        if (document.getElementById('page-people')?.classList.contains('active')) {
+          loadPeople(peopleCurrentPage);
+        }
       } else {
         followingIds.add(String(targetUserId));
         setAllFollowButtons(targetUserId, true, '✓ Подписан', false);
-        if (r.ok) toast('Вы подписались!', 't-ok');
+        if (r.ok) {
+          toast('Вы подписались!', 't-ok');
+          // Remove recommended cards for this author and reload feed after a short delay
+          if (document.getElementById('page-feed')?.classList.contains('active')) {
+            document.querySelectorAll(`[data-rec-author="${targetUserId}"]`).forEach(el => el.remove());
+            setTimeout(loadFeed, 1500);
+          }
+        }
       }
     } else {
       setAllFollowButtons(targetUserId, isFollowing, isFollowing ? '✓ Подписан' : '+ Подписаться', false);
@@ -654,19 +664,57 @@ async function loadFeed() {
   try {
     const r = await fetch(`${API.feed}/${s.userId}`, { headers: auth() });
     if (!r.ok) throw new Error(r.status);
-    const items = await r.json();
+    const data = await r.json();
 
-    if (!items || items.length === 0) {
+    // Support both old flat array and new { following, recommended } shape
+    const followingItems = Array.isArray(data) ? data : (data.following || data.items || []);
+    const recommended   = Array.isArray(data) ? [] : (data.recommended || []);
+
+    let html = '';
+
+    if (followingItems.length === 0 && recommended.length === 0) {
       el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
       return;
     }
-    el.innerHTML = items.map(photoCard).join('');
-    items.forEach(p => fetchLikes(p.id || p.photoId));
+
+    if (followingItems.length > 0) {
+      html += followingItems.map(photoCard).join('');
+    }
+
+    if (recommended.length > 0) {
+      if (followingItems.length > 0) {
+        html += `<div style="display:flex;align-items:center;gap:12px;margin:24px 0 8px">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <span style="font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap">Возможно интересно</span>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>`;
+      } else {
+        html += `<div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">Рекомендуем посмотреть</div>`;
+      }
+      html += recommended.map(recommendedCard).join('');
+    }
+
+    el.innerHTML = html;
+    followingItems.forEach(p => fetchLikes(p.id || p.photoId));
+    recommended.forEach(p => fetchLikes(p.id || p.photoId));
   } catch(e) {
     el.innerHTML = empty('⚠️', e.message === '503'
       ? 'FeedService недоступен — подписки не загружены'
       : 'Не удалось загрузить ленту');
   }
+}
+
+function recommendedCard(p) {
+  const authorId = p.authorUserId || '';
+  const reason = p.reason || '';
+  let card = photoCard(p);
+  if (reason) {
+    card = card.replace(
+      '<div class="pc-footer">',
+      `<div style="font-size:11px;color:var(--muted);padding:0 16px 8px">${esc(reason)}</div><div class="pc-footer">`
+    );
+  }
+  return `<div data-rec-author="${authorId}">${card}</div>`;
 }
 
 // FeedItemResponse: { photoId, authorUserId, authorUserName, title, description, objectKey, previewObjectKey, createdAtUtc }
@@ -947,6 +995,39 @@ let peopleCurrentPage = 1;
 let peopleTotalPages = 1;
 let peopleSearchQuery = '';
 let peopleSearchTimer = null;
+let peopleSocialScores = {};
+
+async function loadPeopleScores() {
+  if (!s.userId) return;
+  try {
+    const r = await fetch(`${API.friends}/${s.userId}/people-scores`, { headers: auth() });
+    if (r.ok) {
+      const scores = await r.json();
+      peopleSocialScores = {};
+      scores.forEach(sc => { peopleSocialScores[String(sc.userId)] = sc; });
+    }
+  } catch {}
+}
+
+function renderUserCard(u) {
+  const uid = String(u.userId || u.id || '');
+  const name = u.userName || u.username || '';
+  const initial = (name || '?')[0].toUpperCase();
+  return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px">
+    <div class="avatar" style="flex-shrink:0;cursor:pointer"
+      onclick="openUserProfile('${uid}','${esc(name)}')">${initial}</div>
+    <div style="flex:1;min-width:0;cursor:pointer"
+      onclick="openUserProfile('${uid}','${esc(name)}')">
+      <div style="font-size:14px;font-weight:600">@${esc(name)}</div>
+      <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || '')}</div>
+    </div>
+    ${followBtn(uid)}
+  </div>`;
+}
+
+function renderSectionHeader(title) {
+  return `<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:16px 4px 8px">${title}</div>`;
+}
 
 async function loadPeople(page = 1) {
   peopleCurrentPage = page;
@@ -956,13 +1037,14 @@ async function loadPeople(page = 1) {
     el.innerHTML = `
       <div id="people-list">${spinner()}</div>
       <div id="people-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px"></div>`;
+    await loadPeopleScores();
   } else {
     const listEl = document.getElementById('people-list');
     if (listEl) listEl.innerHTML = spinner();
   }
 
   try {
-    const params = new URLSearchParams({ page, pageSize: 10 });
+    const params = new URLSearchParams({ page, pageSize: 50 });
     if (peopleSearchQuery) params.set('search', peopleSearchQuery);
 
     const r = await fetch(`${API.auth}/users?${params}`, { headers: auth() });
@@ -977,23 +1059,45 @@ async function loadPeople(page = 1) {
 
     if (!users.length) {
       list.innerHTML = empty('👥', peopleSearchQuery ? 'Никого не найдено' : 'Пока нет других пользователей');
-    } else {
-      list.innerHTML = users.map(u => {
-        const uid = String(u.userId || u.id || '');
-        const name = u.userName || u.username || '';
-        const initial = (name || '?')[0].toUpperCase();
-        return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px">
-          <div class="avatar" style="flex-shrink:0;cursor:pointer"
-            onclick="openUserProfile('${uid}','${esc(name)}')">${initial}</div>
-          <div style="flex:1;min-width:0;cursor:pointer"
-            onclick="openUserProfile('${uid}','${esc(name)}')">
-            <div style="font-size:14px;font-weight:600">@${esc(name)}</div>
-            <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || '')}</div>
-          </div>
-          ${followBtn(uid)}
-        </div>`;
-      }).join('');
+      renderPeoplePagination(data.totalCount, data.totalPages, page);
+      return;
     }
+
+    if (peopleSearchQuery || Object.keys(peopleSocialScores).length === 0) {
+      list.innerHTML = users.map(renderUserCard).join('');
+      renderPeoplePagination(data.totalCount, data.totalPages, page);
+      return;
+    }
+
+    const following = [], suggested = [], others = [];
+    users.forEach(u => {
+      const uid = String(u.userId || u.id || '');
+      const sc = peopleSocialScores[uid];
+      if (sc?.section === 'following') following.push(u);
+      else if (sc?.section === 'suggested') suggested.push(u);
+      else others.push(u);
+    });
+
+    suggested.sort((a, b) => {
+      const sa = peopleSocialScores[String(a.userId || a.id)]?.commonScore ?? 0;
+      const sb = peopleSocialScores[String(b.userId || b.id)]?.commonScore ?? 0;
+      return sb - sa;
+    });
+
+    let html = '';
+    if (following.length) {
+      html += renderSectionHeader('Мои подписки');
+      html += following.map(renderUserCard).join('');
+    }
+    if (suggested.length) {
+      html += renderSectionHeader('Возможно знакомы');
+      html += suggested.map(renderUserCard).join('');
+    }
+    if (others.length) {
+      html += renderSectionHeader('Все пользователи');
+      html += others.map(renderUserCard).join('');
+    }
+    list.innerHTML = html;
 
     renderPeoplePagination(data.totalCount, data.totalPages, page);
   } catch {

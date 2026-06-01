@@ -106,7 +106,7 @@ public static class PhotoEndpoints
 
         var logger = loggerFactory.CreateLogger("PhotoCreatedPublisher");
         var photoCreatedEvent = new PhotoCreatedEvent(
-            photo.Id, photo.AuthorUserId, photo.Title, photo.ObjectKey, photo.CreatedAtUtc);
+            photo.Id, photo.AuthorUserId, photo.Title, photo.ObjectKey, photo.CreatedAtUtc, photo.Description);
         await publishEndpoint.Publish(photoCreatedEvent, cancellationToken);
 
         logger.LogInformation(

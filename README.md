@@ -17,14 +17,35 @@
 ```
 Client → ApiGateway (JWT + Rate Limit) → Services
                                         ├── AuthService (PostgreSQL)
-                                        ├── FriendsService (PostgreSQL)
+                                        ├── FriendsService (PostgreSQL + RabbitMQ publisher)
                                         ├── PhotoService (PostgreSQL + MinIO + RabbitMQ)
-                                        ├── FeedService (HTTP → Friends + Photo, Polly)
+                                        ├── FeedService (PostgreSQL + Redis + RabbitMQ consumers)
                                         ├── LikeService (PostgreSQL + Redis)
                                         └── PreviewService (RabbitMQ consumer)
 
 Infra: Prometheus → Grafana, Jaeger (OTLP), RabbitMQ, Redis
 ```
+
+### FeedService — детали
+
+FeedService реализует push-модель (materialized view) для ленты:
+
+- **feed_items** (PostgreSQL) — денормализованная копия постов для каждого подписчика
+- **Consumers**:
+  - `PhotoCreatedConsumer` — создаёт feed_items для всех подписчиков автора и инвалидирует Redis-кеш рекомендаций
+  - `UserUnfollowedConsumer` — удаляет feed_items отписавшегося и инвалидирует его кеш
+- **FeedBackfillService** — одноразовый startup job: если feed_items пусто, ретроспективно заполняет ленту из PhotoService + FriendsService
+- **GET /api/feed/{userId}** возвращает две секции:
+  - `following` — посты из feed_items (LIMIT 50, ORDER BY CreatedAtUtc DESC)
+  - `recommended` — посты друзей друзей, которых пользователь не читает (LIMIT 20)
+  - `items` — alias для `following`, для обратной совместимости
+
+### Redis — два применения
+
+| Сервис | Ключи | Назначение |
+|---|---|---|
+| LikeService | `likes:photo:{photoId}:count` | Счётчики лайков, инкремент/декремент без обращения в БД |
+| FeedService | `feed:recommended:{userId}` | Кеш рекомендаций, TTL 15 мин, инвалидация по событиям follow/unfollow и публикации фото |
 
 ## Запуск
 
@@ -60,8 +81,10 @@ docker compose up --build
 - ✅ Database per service (5 × PostgreSQL)
 - ✅ EF Migrations во всех сервисах
 - ✅ Eventual consistency через RabbitMQ
-- ✅ Redis distributed cache (LikeService)
+- ✅ Redis distributed cache (LikeService — счётчики лайков; FeedService — кеш рекомендаций, TTL 15 мин)
 - ✅ CQRS в LikeService (Commands/Queries разделены)
+- ✅ Push-model materialized feed (FeedService → feed_items в PostgreSQL)
+- ✅ Рекомендации через friends-of-friends с Redis-кешированием
 
 ### Блок 3 — Resilience и Observability
 - ✅ JSON структурированные логи (Serilog + CompactJsonFormatter)

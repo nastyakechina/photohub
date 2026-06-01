@@ -1,5 +1,7 @@
-using PhotoHub.FeedService.Clients;
+using Microsoft.EntityFrameworkCore;
+using PhotoHub.FeedService.Infrastructure.Persistence;
 using PhotoHub.FeedService.Models;
+using PhotoHub.FeedService.Services;
 
 namespace PhotoHub.FeedService.Endpoints;
 
@@ -15,50 +17,32 @@ public static class FeedEndpoints
 
     private static async Task<IResult> GetFeedAsync(
         Guid userId,
-        FriendsServiceClient friendsServiceClient,
-        PhotoServiceClient photoServiceClient,
-        AuthServiceClient authServiceClient,
+        FeedDbContext dbContext,
+        RecommendationsService recommendationsService,
         CancellationToken cancellationToken)
     {
         if (userId == Guid.Empty)
-        {
             return Results.BadRequest(new { error = "UserId is required." });
-        }
 
-        IReadOnlyCollection<Guid> followingUserIds;
-
-        try
-        {
-            followingUserIds = await friendsServiceClient.GetFollowingAsync(userId, cancellationToken);
-        }
-        catch (FriendsServiceUnavailableException)
-        {
-            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        }
-
-        var photoTasks = followingUserIds.Select(followingUserId =>
-            photoServiceClient.GetPhotosByUserAsync(followingUserId, cancellationToken));
-
-        var photoResults = await Task.WhenAll(photoTasks);
-
-        var authorIds = photoResults.SelectMany(p => p).Select(p => p.AuthorUserId).Distinct();
-        var userNames = await authServiceClient.GetUserNamesAsync(authorIds, cancellationToken);
-
-        var feed = photoResults
-            .SelectMany(photos => photos)
-            .OrderByDescending(photo => photo.CreatedAtUtc)
+        var followingTask = dbContext.FeedItems
+            .Where(fi => fi.UserId == userId)
+            .OrderByDescending(fi => fi.CreatedAtUtc)
             .Take(50)
-            .Select(photo => new FeedItemResponse(
-                photo.Id,
-                photo.AuthorUserId,
-                userNames.GetValueOrDefault(photo.AuthorUserId, "Пользователь"),
-                photo.Title,
-                photo.Description,
-                photo.ObjectKey,
-                photo.PreviewObjectKey,
-                photo.CreatedAtUtc))
-            .ToList();
+            .Select(fi => new FeedItemResponse(
+                fi.PhotoId,
+                fi.AuthorUserId,
+                fi.AuthorName,
+                fi.Title,
+                fi.Description,
+                fi.ObjectKey,
+                fi.PreviewObjectKey,
+                fi.CreatedAtUtc))
+            .ToListAsync(cancellationToken);
 
-        return Results.Ok(feed);
+        var recommendedTask = recommendationsService.GetAsync(userId, cancellationToken);
+
+        await Task.WhenAll(followingTask, recommendedTask);
+
+        return Results.Ok(new FeedResponse(followingTask.Result, recommendedTask.Result));
     }
 }
