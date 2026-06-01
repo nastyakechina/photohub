@@ -587,7 +587,7 @@ function go(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   renderNav(page);
-  if (page === 'feed')    loadFeed();
+  if (page === 'feed')    { feedCurrentPage = 1; loadFeed(); }
   if (page === 'people')  loadPeople();
   if (page === 'profile') loadProfile();
 }
@@ -657,57 +657,105 @@ function logout() { s.clear(); go('auth'); }
 // ──────────────────────────────────────────────────────────
 // FEED
 // ──────────────────────────────────────────────────────────
-async function loadFeed() {
+let feedCurrentPage = 1;
+let feedTotalPages  = 1;
+
+async function loadFeed(page = 1) {
+  feedCurrentPage = page;
   const el = document.getElementById('feed-body');
-  el.innerHTML = spinner();
-  await loadFollowingIds();
+
+  if (page === 1) {
+    el.innerHTML = spinner();
+    await loadFollowingIds();
+  } else {
+    const btn = document.getElementById('feed-more-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  }
+
   try {
-    const r = await fetch(`${API.feed}/${s.userId}`, { headers: auth() });
+    const params = new URLSearchParams({ page, pageSize: 10 });
+    const r = await fetch(`${API.feed}/${s.userId}?${params}`, { headers: auth() });
     if (!r.ok) throw new Error(r.status);
     const data = await r.json();
 
-    // Support both old flat array and new { following, recommended } shape
     const followingItems = Array.isArray(data) ? data : (data.following || data.items || []);
-    const recommended   = Array.isArray(data) ? [] : (data.recommended || []);
+    const recommended    = page === 1
+      ? (Array.isArray(data) ? [] : (data.recommended || []))
+      : [];
+    const totalPages = data.totalPages || 1;
+    feedTotalPages = totalPages;
 
-    let html = '';
-
-    if (followingItems.length === 0 && recommended.length === 0) {
-      el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
-      return;
-    }
-
-    if (followingItems.length > 0) {
-      html += followingItems.map(photoCard).join('');
-    }
-
-    if (recommended.length > 0) {
-      if (followingItems.length > 0) {
-        html += `<div style="display:flex;align-items:center;gap:12px;margin:24px 0 8px">
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-          <span style="font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap">Возможно интересно</span>
-          <div style="flex:1;height:1px;background:var(--border)"></div>
-        </div>`;
-      } else {
-        html += `<div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">Рекомендуем посмотреть</div>`;
+    if (page === 1) {
+      if (followingItems.length === 0 && recommended.length === 0) {
+        el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
+        return;
       }
-      html += recommended.map(recommendedCard).join('');
-    }
 
-    el.innerHTML = html;
-    followingItems.forEach(p => fetchLikes(p.id || p.photoId));
-    recommended.forEach(p => fetchLikes(p.id || p.photoId));
+      const moreBtn = totalPages > 1
+        ? `<div style="text-align:center;margin:16px 0">
+            <button id="feed-more-btn"
+              onclick="loadFeed(feedCurrentPage + 1)"
+              style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 28px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">
+              Показать ещё
+            </button>
+           </div>`
+        : '';
+
+      const recSection = recommended.length > 0
+        ? `<div id="feed-rec-section">
+            ${followingItems.length > 0
+              ? `<div style="display:flex;align-items:center;gap:12px;margin:24px 0 8px">
+                  <div style="flex:1;height:1px;background:var(--border)"></div>
+                  <span style="font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap">Возможно интересно</span>
+                  <div style="flex:1;height:1px;background:var(--border)"></div>
+                 </div>`
+              : `<div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">Рекомендуем посмотреть</div>`}
+            ${recommended.map(recommendedCard).join('')}
+           </div>`
+        : '';
+
+      el.innerHTML =
+        `<div id="feed-following-items">${followingItems.map(p => photoCard(p, true)).join('')}</div>` +
+        moreBtn +
+        recSection;
+
+      followingItems.forEach(p => fetchLikes(p.id || p.photoId));
+      recommended.forEach(p => fetchLikes(p.id || p.photoId));
+    } else {
+      // Append new cards
+      const itemsEl = document.getElementById('feed-following-items');
+      if (itemsEl && followingItems.length > 0) {
+        itemsEl.insertAdjacentHTML('beforeend', followingItems.map(p => photoCard(p, true)).join(''));
+        followingItems.forEach(p => fetchLikes(p.id || p.photoId));
+      }
+
+      const btn = document.getElementById('feed-more-btn');
+      if (btn) {
+        if (page >= totalPages || followingItems.length === 0) {
+          btn.parentElement.remove();
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Показать ещё';
+        }
+      }
+    }
   } catch(e) {
-    el.innerHTML = empty('⚠️', e.message === '503'
-      ? 'FeedService недоступен — подписки не загружены'
-      : 'Не удалось загрузить ленту');
+    if (page === 1) {
+      el.innerHTML = empty('⚠️', e.message === '503'
+        ? 'FeedService недоступен — подписки не загружены'
+        : 'Не удалось загрузить ленту');
+    } else {
+      const btn = document.getElementById('feed-more-btn');
+      if (btn) { btn.disabled = false; btn.textContent = 'Показать ещё'; }
+      toast('Не удалось загрузить следующую страницу', 't-err');
+    }
   }
 }
 
 function recommendedCard(p) {
   const authorId = p.authorUserId || '';
   const reason = p.reason || '';
-  let card = photoCard(p);
+  let card = photoCard(p, true);
   if (reason) {
     card = card.replace(
       '<div class="pc-footer">',
@@ -718,7 +766,7 @@ function recommendedCard(p) {
 }
 
 // FeedItemResponse: { photoId, authorUserId, authorUserName, title, description, objectKey, previewObjectKey, createdAtUtc }
-function photoCard(p) {
+function photoCard(p, useOriginal = false) {
   const id      = p.id || p.photoId || '';
   const userId  = p.authorUserId || '';
   const author  = p.authorUserName || p.userName || 'Пользователь';
@@ -726,7 +774,7 @@ function photoCard(p) {
   const title   = p.title || 'Без названия';
   const desc    = p.description || '';
   const date    = p.createdAtUtc ? new Date(p.createdAtUtc).toLocaleDateString('ru-RU', {day:'numeric',month:'short',year:'numeric'}) : '';
-  const imgKey  = p.previewObjectKey || p.objectKey || '';
+  const imgKey  = useOriginal ? (p.objectKey || p.previewObjectKey || '') : (p.previewObjectKey || p.objectKey || '');
   const imgUrl  = imgKey ? `${MINIO}/${MINIO_BUCKET}/${imgKey}` : '';
 
   const imgHtml = imgUrl
