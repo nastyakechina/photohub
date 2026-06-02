@@ -211,11 +211,14 @@ public static class FriendsEndpoints
             var commonFollowers = myFollowers.Intersect(targetFollowers).Count();
             var commonScore = commonFollowing + commonFollowers;
 
+            var isMyFollower = myFollowers.Contains(targetId);
+            var effectiveScore = !isFollowing && isMyFollower && commonScore == 0 ? 1 : commonScore;
+
             var section = isFollowing ? "following"
-                : commonScore > 0 ? "suggested"
+                : effectiveScore > 0 ? "suggested"
                 : "others";
 
-            return new PeopleScoreDto(targetId, isFollowing, commonScore, section);
+            return new PeopleScoreDto(targetId, isFollowing, effectiveScore, section);
         }).ToList();
 
         return Results.Ok(scores);

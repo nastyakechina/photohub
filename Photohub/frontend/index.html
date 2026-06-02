@@ -599,7 +599,6 @@ function renderNav(cur) {
     navBtn('feed',    'Лента',     cur) +
     navBtn('people',  'Люди',      cur) +
     navBtn('upload',  'Загрузить', cur) +
-    navBtn('profile', 'Профиль',   cur) +
     `<span class="nav-user" onclick="go('profile')">@${esc(s.userName)}</span>` +
     `<button class="nav-btn danger" onclick="logout()">Выйти</button>`;
 }
@@ -837,8 +836,6 @@ const likedSet = new Set();
 
 async function toggleLike(photoId) {
   if (!photoId) return;
-  const btn = document.getElementById(`like-${photoId}`);
-  if (!btn) return;
   const liked = likedSet.has(photoId);
   try {
     if (liked) {
@@ -858,10 +855,57 @@ async function toggleLike(photoId) {
     }
   } catch {}
   const nowLiked = likedSet.has(photoId);
-  btn.classList.toggle('liked', nowLiked);
-  const svgEl = btn.querySelector('svg');
-  if (svgEl) svgEl.outerHTML = svgHeart(nowLiked);
-  fetchLikes(photoId);
+  const btn = document.getElementById(`like-${photoId}`);
+  if (btn) {
+    btn.classList.toggle('liked', nowLiked);
+    const svgEl = btn.querySelector('svg');
+    if (svgEl) svgEl.outerHTML = svgHeart(nowLiked);
+  }
+
+  const cntEl = document.getElementById(`cnt-${photoId}`);
+  if (cntEl) {
+    const cur = parseInt(cntEl.textContent, 10);
+    if (!isNaN(cur)) cntEl.textContent = Math.max(0, cur + (nowLiked ? 1 : -1));
+  }
+
+  if (currentPhotoModalId === photoId) {
+    const modalCount = document.getElementById('photo-modal-likes-count');
+    if (modalCount) {
+      const cur = parseInt(modalCount.textContent, 10);
+      if (!isNaN(cur)) modalCount.textContent = Math.max(0, cur + (nowLiked ? 1 : -1));
+    }
+    const modalBtn = document.getElementById('photo-modal-like-btn');
+    if (modalBtn) modalBtn.style.color = nowLiked ? 'var(--accent)' : 'var(--muted)';
+    _updateModalLikers(nowLiked);
+  }
+}
+
+function _updateModalLikers(nowLiked) {
+  const el = document.getElementById('photo-modal-likers');
+  if (!el) return;
+  const myId = s.userId;
+  const myName = s.userName || 'Пользователь';
+  const initial = myName[0]?.toUpperCase() || '?';
+  if (nowLiked) {
+    if (!el.querySelector(`[data-liker="${myId}"]`)) {
+      const empty = el.querySelector('[data-empty]');
+      if (empty) empty.remove();
+      el.insertAdjacentHTML('afterbegin',
+        `<div data-liker="${myId}" style="display:flex;align-items:center;gap:10px;padding:6px 0;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px;cursor:pointer"
+            onclick="closePhotoModal();openUserProfile('${myId}','${esc(myName)}')">
+            <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initial}</div>
+            ${userLink(myId, '@' + myName)}
+          </div>
+        </div>`
+      );
+    }
+  } else {
+    const entry = el.querySelector(`[data-liker="${myId}"]`);
+    if (entry) entry.remove();
+    if (!el.querySelector('[data-liker]'))
+      el.innerHTML = '<div data-empty style="color:var(--muted);font-size:13px">Пока никто не лайкнул</div>';
+  }
 }
 
 // ──────────────────────────────────────────────────────────
@@ -1461,7 +1505,7 @@ async function loadPhotoLikers(photoId) {
     if (!r.ok) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">–</div>'; return; }
     const likerIds = await r.json();
     if (!likerIds.length) {
-      el.innerHTML = '<div style="color:var(--muted);font-size:13px">Пока никто не лайкнул</div>';
+      el.innerHTML = '<div data-empty style="color:var(--muted);font-size:13px">Пока никто не лайкнул</div>';
       return;
     }
     const usersMap = await fetchUsersMap(likerIds);
@@ -1470,7 +1514,7 @@ async function loadPhotoLikers(photoId) {
       const u = usersMap[String(id)];
       const name = u ? (u.userName || 'Пользователь') : 'Пользователь';
       const initial = name[0].toUpperCase();
-      return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;justify-content:space-between">
+      return `<div data-liker="${id}" style="display:flex;align-items:center;gap:10px;padding:6px 0;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:10px;cursor:pointer"
           onclick="closePhotoModal();openUserProfile('${id}','${esc(name)}')">
           <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initial}</div>
@@ -1487,14 +1531,6 @@ async function loadPhotoLikers(photoId) {
 async function toggleLikeModal() {
   if (!currentPhotoModalId) return;
   await toggleLike(currentPhotoModalId);
-  const countRes = await fetch(`${API.likes}/photos/${currentPhotoModalId}/count`);
-  if (countRes.ok) {
-    const d = await countRes.json();
-    document.getElementById('photo-modal-likes-count').textContent = d.count ?? d.Count ?? 0;
-  }
-  const likeBtn = document.getElementById('photo-modal-like-btn');
-  likeBtn.style.color = likedSet.has(currentPhotoModalId) ? 'var(--accent)' : 'var(--muted)';
-  await loadPhotoLikers(currentPhotoModalId);
 }
 
 // ──────────────────────────────────────────────────────────

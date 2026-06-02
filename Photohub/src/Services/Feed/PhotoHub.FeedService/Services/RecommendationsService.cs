@@ -84,8 +84,6 @@ public sealed class RecommendationsService(
             return ([], false);
         }
 
-        if (myFollowing.Count == 0) return ([], true);
-
         var myFollowingSet = myFollowing.ToHashSet();
 
         // Build map: candidateId → set of my friends who follow them
@@ -131,6 +129,26 @@ public sealed class RecommendationsService(
                 userId, friendLookupErrors, myFollowing.Count, errorRate, shouldCache);
         }
 
+        // Add followers who haven't been followed back as additional candidates
+        var followerCandidates = new HashSet<Guid>();
+        IReadOnlyCollection<Guid> myFollowers;
+        try
+        {
+            myFollowers = await friendsClient.GetFollowersAsync(userId, ct);
+        }
+        catch (FriendsServiceUnavailableException)
+        {
+            myFollowers = [];
+        }
+
+        foreach (var followerId in myFollowers)
+        {
+            if (followerId == userId || myFollowingSet.Contains(followerId)) continue;
+            followerCandidates.Add(followerId);
+            if (!friendsWhoFollow.ContainsKey(followerId))
+                friendsWhoFollow[followerId] = [];
+        }
+
         if (friendsWhoFollow.Count == 0)
         {
             logger.LogInformation(
@@ -171,7 +189,9 @@ public sealed class RecommendationsService(
 
             candidatesWithPhotos++;
             var authorName = userNames.GetValueOrDefault(candidateId, "Пользователь");
-            var reason = BuildReason(mutualFriends, userNames);
+            var reason = followerCandidates.Contains(candidateId) && mutualFriends.Count == 0
+                ? "Подписан(а) на вас"
+                : BuildReason(mutualFriends, userNames);
 
             foreach (var photo in photos.OrderByDescending(p => p.CreatedAtUtc).Take(3))
             {
