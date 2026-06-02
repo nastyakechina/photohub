@@ -6,6 +6,16 @@ using PhotoHub.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:3001")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 builder.AddPhotoHubObservability("PhotoHub.AuthService");
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -19,9 +29,19 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    db.Database.Migrate();
+}
+
 app.UsePhotoHubObservability();
+app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {

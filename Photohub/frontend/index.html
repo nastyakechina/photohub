@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhotoHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:      #0a0a0a;
+      --surface: #111111;
+      --border:  #222222;
+      --accent:  #ff6b00;
+      --accent2: #ff8c33;
+      --text:    #ffffff;
+      --muted:   #888888;
+      --error:   #ef4444;
+      --ok:      #22c55e;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── NAVBAR ── */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
+      background: rgba(17,17,17,0.92);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      display: flex; align-items: center; padding: 0 24px; gap: 8px;
+      z-index: 200;
+    }
+    .nav-logo {
+      font-size: 17px; font-weight: 700; color: var(--accent);
+      cursor: pointer; margin-right: 8px; user-select: none;
+    }
+    .nav-sep { flex: 1; }
+    .nav-user { font-size: 13px; color: var(--muted); padding: 0 8px; cursor: pointer; }
+    .nav-user:hover { color: var(--text); }
+    .nav-btn {
+      background: none; border: none; font-family: inherit; font-size: 13px;
+      color: var(--muted); cursor: pointer; padding: 8px 14px;
+      border-radius: 8px; transition: color .15s, background .15s;
+    }
+    .nav-btn:hover { color: var(--text); background: var(--border); }
+    .nav-btn.active { color: var(--text); font-weight: 500; }
+    .nav-btn.danger { color: var(--error); }
+    .nav-btn.danger:hover { background: rgba(239,68,68,.1); color: var(--error); }
+
+    /* ── MAIN ── */
+    .main { padding-top: 56px; min-height: 100vh; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .container { max-width: 680px; margin: 0 auto; padding: 36px 20px; }
+    .narrow { max-width: 420px; margin: 0 auto; padding: 48px 20px; }
+
+    /* ── HEADINGS ── */
+    .page-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .page-sub   { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+    .tab-btn {
+      background: none; border: none; font-family: inherit; font-size: 14px;
+      font-weight: 500; color: var(--muted); cursor: pointer;
+      padding: 12px 20px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── FORM ── */
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; letter-spacing: .04em; text-transform: uppercase; }
+    .field input, .field textarea {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 11px 14px; color: var(--text);
+      font-family: inherit; font-size: 14px; outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field textarea { resize: vertical; min-height: 80px; }
+
+    .btn {
+      display: block; width: 100%; padding: 12px;
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 10px; font-family: inherit; font-size: 14px;
+      font-weight: 600; cursor: pointer; transition: background .15s, opacity .15s;
+      margin-top: 6px;
+    }
+    .btn:hover { background: var(--accent2); }
+    .btn:disabled { opacity: .45; pointer-events: none; }
+
+    /* ── ALERT BANNER ── */
+    .alert { display: none; padding: 11px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+    .alert.show { display: block; }
+    .alert.err { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3); color: var(--error); }
+    .alert.ok  { background: rgba(34,197,94,.08);  border: 1px solid rgba(34,197,94,.3);  color: var(--ok); }
+
+    /* ── AUTH HERO ── */
+    .auth-hero { text-align: center; margin-bottom: 36px; }
+    .auth-hero h1 { font-size: 30px; font-weight: 700; }
+    .auth-hero h1 span { color: var(--accent); }
+    .auth-hero p { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+    }
+
+    /* ── PHOTO CARD ── */
+    .pc-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .pc-meta { flex: 1; min-width: 0; }
+    .pc-author { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pc-date   { font-size: 11px; color: var(--muted); }
+
+    .follow-btn {
+      background: none; border: 1px solid var(--border); border-radius: 20px;
+      font-family: inherit; font-size: 12px; color: var(--muted);
+      padding: 5px 14px; cursor: pointer; transition: all .15s; white-space: nowrap;
+    }
+    .follow-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .follow-btn.following { border-color: var(--accent); color: var(--accent); }
+
+    .pc-img {
+      width: 100%; aspect-ratio: 4/3; object-fit: cover;
+      background: #181818; display: block;
+    }
+    .pc-placeholder {
+      width: 100%; aspect-ratio: 4/3; background: #181818;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; color: var(--muted); font-size: 13px;
+    }
+    .pc-placeholder svg { opacity: .25; }
+
+    .pc-body { padding: 14px 16px 10px; }
+    .pc-title { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+    .pc-desc  { font-size: 13px; color: var(--muted); }
+
+    .pc-footer {
+      padding: 10px 12px; border-top: 1px solid var(--border);
+      display: flex; gap: 4px;
+    }
+    .like-btn {
+      background: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 13px; color: var(--muted); display: flex; align-items: center;
+      gap: 6px; padding: 6px 10px; border-radius: 8px; transition: all .15s;
+    }
+    .like-btn:hover { background: rgba(255,107,0,.08); color: var(--accent); }
+    .like-btn.liked { color: var(--accent); background: rgba(255,107,0,.08); }
+    .like-btn svg { flex-shrink: 0; }
+
+    /* ── UPLOAD DROP ── */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 12px;
+      padding: 36px 20px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; position: relative;
+      margin-bottom: 16px;
+    }
+    .drop-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: rgba(255,107,0,.04); }
+    .drop-icon { font-size: 32px; margin-bottom: 10px; opacity: .55; }
+    .drop-label { font-size: 14px; color: var(--muted); }
+    .drop-label b { color: var(--accent); font-weight: 500; }
+    .drop-hint { font-size: 12px; color: var(--muted); margin-top: 5px; opacity: .7; }
+
+    .preview-wrap { border-radius: 10px; overflow: hidden; margin-bottom: 16px; display: none; }
+    .preview-wrap img { width: 100%; max-height: 280px; object-fit: cover; display: block; }
+
+    /* ── PROFILE ── */
+    .profile-banner {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 28px; display: flex;
+      align-items: center; gap: 24px; margin-bottom: 28px;
+    }
+    .profile-ava {
+      width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent); color: #fff;
+      font-size: 28px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-name { font-size: 20px; font-weight: 700; }
+    .profile-stats { display: flex; gap: 24px; margin-top: 14px; }
+    .stat-val { font-size: 18px; font-weight: 700; }
+    .stat-lbl { font-size: 11px; color: var(--muted); }
+
+    .photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+    .grid-cell {
+      aspect-ratio: 1; background: #181818; border-radius: 4px;
+      overflow: hidden; cursor: pointer; position: relative;
+    }
+    .grid-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s; }
+    .grid-cell:hover img { transform: scale(1.06); }
+    .grid-placeholder {
+      width: 100%; height: 100%; display: flex; align-items: center;
+      justify-content: center; color: var(--muted); opacity: .3; font-size: 22px;
+    }
+
+    /* ── EMPTY & LOADING ── */
+    .empty { text-align: center; padding: 56px 0; color: var(--muted); }
+    .empty-icon { font-size: 42px; opacity: .3; margin-bottom: 14px; }
+    .empty-text { font-size: 14px; }
+
+    .spinner-wrap { display: flex; justify-content: center; padding: 48px; }
+    .spinner {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid rgba(255,107,0,.25); border-top-color: var(--accent);
+      animation: spin .65s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 22px; right: 22px; z-index: 999;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 13px 18px; font-size: 13px;
+      max-width: 280px; transform: translateY(80px); opacity: 0;
+      transition: transform .25s, opacity .25s; pointer-events: none;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.t-ok  { border-color: rgba(34,197,94,.4);  color: var(--ok); }
+    .toast.t-err { border-color: rgba(239,68,68,.4); color: var(--error); }
+
+    /* ── SECTION LABEL ── */
+    .section-label {
+      font-size: 11px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="nav" id="nav">
+  <span class="nav-logo" onclick="go('feed')">▲ PhotoHub</span>
+  <div class="nav-sep"></div>
+  <div id="nav-inner"><!-- filled by JS --></div>
+</nav>
+
+<main class="main">
+
+  <!-- ── AUTH ── -->
+  <div class="page active" id="page-auth">
+    <div class="narrow">
+      <div class="auth-hero">
+        <h1>Photo<span>Hub</span></h1>
+        <p>Социальная сеть для публикации фотографий</p>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('login')">Войти</button>
+        <button class="tab-btn"        onclick="switchTab('register')">Регистрация</button>
+      </div>
+
+      <!-- LOGIN -->
+      <div class="tab-pane active" id="tab-login">
+        <div class="alert" id="msg-login"></div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="l-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Пароль</label>
+          <input type="password" id="l-pass" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn" onclick="doLogin()">Войти</button>
+      </div>
+
+      <!-- REGISTER -->
+      <div class="tab-pane" id="tab-register">
+        <div class="alert" id="msg-register"></div>
+        <div class="field">
+          <label>Имя пользователя</label>
+          <input type="text" id="r-name" placeholder="coolphotographer" autocomplete="username">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="r-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Пароль (минимум 6 символов)</label>
+          <input type="password" id="r-pass" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <button class="btn" onclick="doRegister()">Создать аккаунт</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FEED ── -->
+  <div class="page" id="page-feed">
+    <div class="container">
+      <div class="page-title">Лента</div>
+      <div class="page-sub">Фотографии от людей, на которых вы подписаны</div>
+      <div id="feed-body"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ── UPLOAD ── -->
+  <div class="page" id="page-upload">
+    <div class="container" style="max-width:500px">
+      <div class="page-title">Новая публикация</div>
+      <div class="page-sub">Поделитесь своим снимком</div>
+
+      <div class="alert" id="msg-upload"></div>
+
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="u-file" accept="image/*" onchange="onFileChange(this)">
+        <div class="drop-icon">📸</div>
+        <div class="drop-label">Перетащите фото сюда или <b>выберите файл</b></div>
+        <div class="drop-hint">PNG, JPG, WEBP · до 10 MB</div>
+      </div>
+
+      <div class="preview-wrap" id="preview-wrap">
+        <img id="preview-img" src="" alt="">
+      </div>
+
+      <div class="field">
+        <label>Название *</label>
+        <input type="text" id="u-title" placeholder="Мой лучший снимок">
+      </div>
+      <div class="field">
+        <label>Описание</label>
+        <textarea id="u-desc" placeholder="Расскажите об этом фото..."></textarea>
+      </div>
+
+      <button class="btn" onclick="doUpload()">Опубликовать</button>
+    </div>
+  </div>
+
+  <!-- ── PROFILE ── -->
+  <div class="page" id="page-profile">
+    <div class="container">
+      <div class="profile-banner" id="profile-banner">
+        <div class="spinner-wrap" style="padding:0"><div class="spinner"></div></div>
+      </div>
+      <div class="section-label">Публикации</div>
+      <div id="profile-photos"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+<!-- ── PEOPLE ── -->
+<div class="page" id="page-people">
+  <div class="container">
+    <div class="page-title">Люди</div>
+    <div class="page-sub">Найдите интересных авторов и подпишитесь</div>
+    <input type="text" id="people-search" placeholder="Поиск по имени..."
+      oninput="filterPeople(this.value)"
+      style="width:100%;margin-bottom:16px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--text);box-sizing:border-box">
+    <div id="people-body"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+  </div>
+</div>
+
+<!-- ── USER PROFILE ── -->
+<div class="page" id="page-user-profile">
+  <div class="container">
+    <button onclick="go(prevPage)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-family:inherit;font-size:13px;padding:0;margin-bottom:20px">← Назад</button>
+    <div class="profile-banner" id="up-profile-banner">
+      <div class="spinner-wrap" style="padding:0"><div class="spinner"></div></div>
+    </div>
+    <div class="section-label" style="margin-top:24px">Публикации</div>
+    <div id="up-photos-grid"></div>
+  </div>
+</div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- ── FOLLOWERS MODAL ── -->
+<div class="modal-overlay" id="followers-modal" onclick="closeFollowersModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div onclick="event.stopPropagation()" style="background:var(--surface);border-radius:16px;padding:24px;width:90%;max-width:420px;max-height:70vh;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="section-label" id="followers-modal-title" style="margin:0">Подписчики</div>
+      <button onclick="closeFollowersModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div id="followers-modal-body" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px">
+      <div class="spinner-wrap"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── PHOTO MODAL ── -->
+<div class="modal-overlay" id="photo-modal" onclick="closePhotoModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:1001;align-items:center;justify-content:center">
+  <div onclick="event.stopPropagation()" style="background:var(--surface);border-radius:16px;width:90%;max-width:560px;max-height:88vh;overflow-y:auto;display:flex;flex-direction:column">
+    <div style="position:relative">
+      <img id="photo-modal-img" src="" alt="" style="width:100%;border-radius:16px 16px 0 0;object-fit:contain;max-height:50vh;background:#000">
+      <button onclick="closePhotoModal()" style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.5);border:none;color:#fff;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:16px;line-height:1">×</button>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div id="photo-modal-title" style="font-size:16px;font-weight:700"></div>
+          <div id="photo-modal-desc" style="font-size:13px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <button id="photo-modal-like-btn" onclick="toggleLikeModal()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--muted)">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </button>
+          <span id="photo-modal-likes-count" style="font-size:14px;font-weight:600">0</span>
+        </div>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:8px">Кто лайкнул</div>
+        <div id="photo-modal-likers" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto">
+          <div style="color:var(--muted);font-size:13px">Загрузка...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────
+// CONFIG
+// ──────────────────────────────────────────────────────────
+const API = {
+  auth:    'http://localhost:5001/api/auth',
+  photos:  'http://localhost:5003/api/photos',
+  feed:    'http://localhost:5004/api/feed',
+  friends: 'http://localhost:5002/api/friends',
+  likes:   'http://localhost:5005/api/likes',
+};
+const MINIO = 'http://localhost:9000';
+const MINIO_BUCKET = 'photos';
+
+// ──────────────────────────────────────────────────────────
+// STATE
+// ──────────────────────────────────────────────────────────
+const s = {
+  get token()    { return localStorage.getItem('ph_token'); },
+  get userId()   { return localStorage.getItem('ph_userId'); },
+  get userName() { return localStorage.getItem('ph_userName'); },
+  save(token, id, name) {
+    localStorage.setItem('ph_token', token);
+    localStorage.setItem('ph_userId', id);
+    localStorage.setItem('ph_userName', name);
+  },
+  clear() {
+    ['ph_token','ph_userId','ph_userName'].forEach(k => localStorage.removeItem(k));
+  },
+};
+
+// ──────────────────────────────────────────────────────────
+// FOLLOW STATE — единый источник правды
+// ──────────────────────────────────────────────────────────
+const followingIds = new Set();
+let prevPage = 'feed';
+
+async function loadFollowingIds() {
+  if (!s.userId) return;
+  try {
+    const r = await fetch(`${API.friends}/${s.userId}/following`, { headers: auth() });
+    if (r.ok) {
+      const ids = await r.json();
+      followingIds.clear();
+      ids.forEach(id => followingIds.add(String(id)));
+    }
+  } catch {}
+}
+
+async function toggleFollow(targetUserId) {
+  if (!targetUserId || targetUserId === s.userId) return;
+
+  const isFollowing = followingIds.has(String(targetUserId));
+
+  if (isFollowing) {
+    if (!confirm('Отписаться от этого пользователя?')) return;
+  }
+
+  setAllFollowButtons(targetUserId, null, '...', true);
+
+  try {
+    const r = await fetch(`${API.friends}/follow`, {
+      method: isFollowing ? 'DELETE' : 'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ followerId: s.userId, followingId: targetUserId }),
+    });
+
+    if (r.ok || r.status === 409 || r.status === 404) {
+      if (isFollowing) {
+        followingIds.delete(String(targetUserId));
+        setAllFollowButtons(targetUserId, false, '+ Подписаться', false);
+        toast('Вы отписались', 't-ok');
+        if (document.getElementById('page-people')?.classList.contains('active')) {
+          loadPeople(peopleCurrentPage);
+        }
+      } else {
+        followingIds.add(String(targetUserId));
+        setAllFollowButtons(targetUserId, true, '✓ Подписан', false);
+        if (r.ok) {
+          toast('Вы подписались!', 't-ok');
+          // Remove recommended cards for this author and reload feed after a short delay
+          if (document.getElementById('page-feed')?.classList.contains('active')) {
+            document.querySelectorAll(`[data-rec-author="${targetUserId}"]`).forEach(el => el.remove());
+            setTimeout(loadFeed, 1500);
+          }
+        }
+      }
+    } else {
+      setAllFollowButtons(targetUserId, isFollowing, isFollowing ? '✓ Подписан' : '+ Подписаться', false);
+      toast('Ошибка: ' + r.status, 't-err');
+    }
+  } catch {
+    setAllFollowButtons(targetUserId, isFollowing, isFollowing ? '✓ Подписан' : '+ Подписаться', false);
+    toast('Ошибка соединения', 't-err');
+  }
+}
+
+function setAllFollowButtons(targetUserId, isFollowing, text, disabled) {
+  document.querySelectorAll(`[data-follow-id="${targetUserId}"]`).forEach(btn => {
+    btn.textContent = text;
+    btn.disabled = disabled;
+    if (isFollowing === true) {
+      btn.classList.add('following');
+    } else if (isFollowing === false) {
+      btn.classList.remove('following');
+    }
+  });
+}
+
+function followBtn(userId, extraStyle = '') {
+  if (!userId || userId === s.userId) return '';
+  const isFollowing = followingIds.has(String(userId));
+  return `<button
+    class="follow-btn${isFollowing ? ' following' : ''}"
+    data-follow-id="${userId}"
+    onclick="event.stopPropagation();toggleFollow('${userId}')"
+    style="${extraStyle}">
+    ${isFollowing ? '✓ Подписан' : '+ Подписаться'}
+  </button>`;
+}
+
+function userLink(userId, userName, extraStyle = '') {
+  const name = userName || 'Пользователь';
+  return `<span
+    onclick="event.stopPropagation();openUserProfile('${userId}','${esc(name)}')"
+    style="cursor:pointer;${extraStyle}">${esc(name)}</span>`;
+}
+
+// ──────────────────────────────────────────────────────────
+// INIT
+// ──────────────────────────────────────────────────────────
+function init() {
+  s.token && s.userId ? go('feed') : go('auth');
+
+  // enter key on login
+  document.getElementById('l-pass').addEventListener('keydown', e => e.key === 'Enter' && doLogin());
+  document.getElementById('r-pass').addEventListener('keydown', e => e.key === 'Enter' && doRegister());
+
+  // drag and drop
+  const dz = document.getElementById('drop-zone');
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', ()  => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) {
+      const inp = document.getElementById('u-file');
+      const dt = new DataTransfer(); dt.items.add(f); inp.files = dt.files;
+      showPreview(f);
+    }
+  });
+}
+
+// ──────────────────────────────────────────────────────────
+// NAVIGATION
+// ──────────────────────────────────────────────────────────
+function go(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  renderNav(page);
+  if (page === 'feed')    { feedCurrentPage = 1; loadFeed(); }
+  if (page === 'people')  loadPeople();
+  if (page === 'profile') loadProfile();
+}
+
+function renderNav(cur) {
+  const el = document.getElementById('nav-inner');
+  if (!s.token) { el.innerHTML = ''; return; }
+  el.innerHTML =
+    navBtn('feed',    'Лента',     cur) +
+    navBtn('people',  'Люди',      cur) +
+    navBtn('upload',  'Загрузить', cur) +
+    `<span class="nav-user" onclick="go('profile')">@${esc(s.userName)}</span>` +
+    `<button class="nav-btn danger" onclick="logout()">Выйти</button>`;
+}
+
+function navBtn(page, label, cur) {
+  return `<button class="nav-btn ${cur===page?'active':''}" onclick="go('${page}')">${label}</button>`;
+}
+
+// ──────────────────────────────────────────────────────────
+// AUTH
+// ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) =>
+    b.classList.toggle('active', (tab==='login'&&i===0)||(tab==='register'&&i===1)));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+}
+
+async function doLogin() {
+  const email = v('l-email'), pass = v('l-pass');
+  if (!email || !pass) return alert2('msg-login', 'Заполните все поля', 'err');
+  clearAlert('msg-login');
+  try {
+    const r = await post(`${API.auth}/login`, { email, password: pass });
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      return alert2('msg-login', e.error || e.message || 'Неверный email или пароль', 'err');
+    }
+    const d = await r.json();
+    s.save(d.accessToken, d.userId, d.userName);
+    loadFollowingIds();
+    go('feed');
+  } catch { alert2('msg-login', 'Сервер недоступен. Убедитесь, что стек запущен.', 'err'); }
+}
+
+async function doRegister() {
+  const userName = v('r-name'), email = v('r-email'), pass = v('r-pass');
+  if (!userName || !email || !pass) return alert2('msg-register', 'Заполните все поля', 'err');
+  clearAlert('msg-register');
+  try {
+    const r = await post(`${API.auth}/register`, { userName, email, password: pass });
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      return alert2('msg-register', e.error || e.message || 'Ошибка регистрации', 'err');
+    }
+    alert2('msg-register', 'Аккаунт создан! Выполняю вход...', 'ok');
+    document.getElementById('l-email').value = email;
+    document.getElementById('l-pass').value  = pass;
+    setTimeout(doLogin, 800);
+  } catch { alert2('msg-register', 'Сервер недоступен. Убедитесь, что стек запущен.', 'err'); }
+}
+
+function logout() { s.clear(); go('auth'); }
+
+// ──────────────────────────────────────────────────────────
+// FEED
+// ──────────────────────────────────────────────────────────
+let feedCurrentPage = 1;
+let feedTotalPages  = 1;
+
+async function loadFeed(page = 1) {
+  feedCurrentPage = page;
+  const el = document.getElementById('feed-body');
+
+  if (page === 1) {
+    el.innerHTML = spinner();
+    await loadFollowingIds();
+  } else {
+    const btn = document.getElementById('feed-more-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  }
+
+  try {
+    const params = new URLSearchParams({ page, pageSize: 10 });
+    const r = await fetch(`${API.feed}/${s.userId}?${params}`, { headers: auth() });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+
+    const followingItems = Array.isArray(data) ? data : (data.following || data.items || []);
+    const recommended    = page === 1
+      ? (Array.isArray(data) ? [] : (data.recommended || []))
+      : [];
+    const totalPages = data.totalPages || 1;
+    feedTotalPages = totalPages;
+
+    if (page === 1) {
+      if (followingItems.length === 0 && recommended.length === 0) {
+        el.innerHTML = empty('🌅', 'Лента пуста — подпишитесь на кого-нибудь!');
+        return;
+      }
+
+      const moreBtn = totalPages > 1
+        ? `<div style="text-align:center;margin:16px 0">
+            <button id="feed-more-btn"
+              onclick="loadFeed(feedCurrentPage + 1)"
+              style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 28px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600">
+              Показать ещё
+            </button>
+           </div>`
+        : '';
+
+      const recSection = recommended.length > 0
+        ? `<div id="feed-rec-section">
+            ${followingItems.length > 0
+              ? `<div style="display:flex;align-items:center;gap:12px;margin:24px 0 8px">
+                  <div style="flex:1;height:1px;background:var(--border)"></div>
+                  <span style="font-size:13px;font-weight:700;color:var(--muted);white-space:nowrap">Возможно интересно</span>
+                  <div style="flex:1;height:1px;background:var(--border)"></div>
+                 </div>`
+              : `<div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:12px">Рекомендуем посмотреть</div>`}
+            ${recommended.map(recommendedCard).join('')}
+           </div>`
+        : '';
+
+      el.innerHTML =
+        `<div id="feed-following-items">${followingItems.map(p => photoCard(p, true)).join('')}</div>` +
+        moreBtn +
+        recSection;
+
+      followingItems.forEach(p => fetchLikes(p.id || p.photoId));
+      recommended.forEach(p => fetchLikes(p.id || p.photoId));
+    } else {
+      // Append new cards
+      const itemsEl = document.getElementById('feed-following-items');
+      if (itemsEl && followingItems.length > 0) {
+        itemsEl.insertAdjacentHTML('beforeend', followingItems.map(p => photoCard(p, true)).join(''));
+        followingItems.forEach(p => fetchLikes(p.id || p.photoId));
+      }
+
+      const btn = document.getElementById('feed-more-btn');
+      if (btn) {
+        if (page >= totalPages || followingItems.length === 0) {
+          btn.parentElement.remove();
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Показать ещё';
+        }
+      }
+    }
+  } catch(e) {
+    if (page === 1) {
+      el.innerHTML = empty('⚠️', e.message === '503'
+        ? 'FeedService недоступен — подписки не загружены'
+        : 'Не удалось загрузить ленту');
+    } else {
+      const btn = document.getElementById('feed-more-btn');
+      if (btn) { btn.disabled = false; btn.textContent = 'Показать ещё'; }
+      toast('Не удалось загрузить следующую страницу', 't-err');
+    }
+  }
+}
+
+function recommendedCard(p) {
+  const authorId = p.authorUserId || '';
+  const reason = p.reason || '';
+  let card = photoCard(p, true);
+  if (reason) {
+    card = card.replace(
+      '<div class="pc-footer">',
+      `<div style="font-size:11px;color:var(--muted);padding:0 16px 8px">${esc(reason)}</div><div class="pc-footer">`
+    );
+  }
+  return `<div data-rec-author="${authorId}">${card}</div>`;
+}
+
+// FeedItemResponse: { photoId, authorUserId, authorUserName, title, description, objectKey, previewObjectKey, createdAtUtc }
+function photoCard(p, useOriginal = false) {
+  const id      = p.id || p.photoId || '';
+  const userId  = p.authorUserId || '';
+  const author  = p.authorUserName || p.userName || 'Пользователь';
+  const initial = author[0]?.toUpperCase() || '?';
+  const title   = p.title || 'Без названия';
+  const desc    = p.description || '';
+  const date    = p.createdAtUtc ? new Date(p.createdAtUtc).toLocaleDateString('ru-RU', {day:'numeric',month:'short',year:'numeric'}) : '';
+  const imgKey  = useOriginal ? (p.objectKey || p.previewObjectKey || '') : (p.previewObjectKey || p.objectKey || '');
+  const imgUrl  = imgKey ? `${MINIO}/${MINIO_BUCKET}/${imgKey}` : '';
+
+  const imgHtml = imgUrl
+    ? `<div onclick="openPhoto('${id}')" style="cursor:pointer">
+        <img class="pc-img" src="${esc(imgUrl)}" alt="${esc(title)}" onerror="this.replaceWith(makePlaceholder('${esc(title)}'))">
+      </div>`
+    : `<div class="pc-placeholder">${svgImg()}<span>${esc(title)}</span></div>`;
+
+  return `<div class="card" id="card-${id}">
+    <div class="pc-header">
+      <div class="avatar" style="cursor:pointer" onclick="openUserProfile('${userId}','${esc(author)}')">${initial}</div>
+      <div class="pc-meta">
+        ${userLink(userId, author, 'font-size:13px;font-weight:600')}
+        ${date ? `<div class="pc-date">${date}</div>` : ''}
+      </div>
+      ${followBtn(userId)}
+    </div>
+    ${imgHtml}
+    <div class="pc-body">
+      <div class="pc-title">${esc(title)}</div>
+      ${desc ? `<div class="pc-desc">${esc(desc)}</div>` : ''}
+    </div>
+    <div class="pc-footer">
+      <button class="like-btn" id="like-${id}" onclick="toggleLike('${id}')">
+        ${svgHeart(false)}<span id="cnt-${id}">–</span>
+      </button>
+    </div>
+  </div>`;
+}
+
+async function fetchLikes(photoId) {
+  if (!photoId) return;
+  try {
+    const r = await fetch(`${API.likes}/photos/${photoId}/count`);
+    if (r.ok) {
+      const d = await r.json();
+      const cnt = d.count ?? d.Count ?? 0;
+      const el = document.getElementById(`cnt-${photoId}`);
+      if (el) el.textContent = cnt;
+    }
+    if (s.userId) {
+      const r2 = await fetch(`${API.likes}/photos/${photoId}/users/${s.userId}`);
+      if (r2.ok) {
+        const hasLiked = await r2.json();
+        if (hasLiked) {
+          likedSet.add(photoId);
+          const btn = document.getElementById(`like-${photoId}`);
+          if (btn) {
+            btn.classList.add('liked');
+            const svgEl = btn.querySelector('svg');
+            if (svgEl) svgEl.outerHTML = svgHeart(true);
+          }
+        }
+      }
+    }
+  } catch {}
+}
+
+const likedSet = new Set();
+
+async function toggleLike(photoId) {
+  if (!photoId) return;
+  const liked = likedSet.has(photoId);
+  try {
+    if (liked) {
+      await fetch(API.likes, {
+        method: 'DELETE',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoId, userId: s.userId })
+      });
+      likedSet.delete(photoId);
+    } else {
+      const r = await fetch(API.likes, {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoId, userId: s.userId })
+      });
+      if (r.ok || r.status === 409) likedSet.add(photoId);
+    }
+  } catch {}
+  const nowLiked = likedSet.has(photoId);
+  const btn = document.getElementById(`like-${photoId}`);
+  if (btn) {
+    btn.classList.toggle('liked', nowLiked);
+    const svgEl = btn.querySelector('svg');
+    if (svgEl) svgEl.outerHTML = svgHeart(nowLiked);
+  }
+
+  const cntEl = document.getElementById(`cnt-${photoId}`);
+  if (cntEl) {
+    const cur = parseInt(cntEl.textContent, 10);
+    if (!isNaN(cur)) cntEl.textContent = Math.max(0, cur + (nowLiked ? 1 : -1));
+  }
+
+  if (currentPhotoModalId === photoId) {
+    const modalCount = document.getElementById('photo-modal-likes-count');
+    if (modalCount) {
+      const cur = parseInt(modalCount.textContent, 10);
+      if (!isNaN(cur)) modalCount.textContent = Math.max(0, cur + (nowLiked ? 1 : -1));
+    }
+    const modalBtn = document.getElementById('photo-modal-like-btn');
+    if (modalBtn) modalBtn.style.color = nowLiked ? 'var(--accent)' : 'var(--muted)';
+    _updateModalLikers(nowLiked);
+  }
+}
+
+function _updateModalLikers(nowLiked) {
+  const el = document.getElementById('photo-modal-likers');
+  if (!el) return;
+  const myId = s.userId;
+  const myName = s.userName || 'Пользователь';
+  const initial = myName[0]?.toUpperCase() || '?';
+  if (nowLiked) {
+    if (!el.querySelector(`[data-liker="${myId}"]`)) {
+      const empty = el.querySelector('[data-empty]');
+      if (empty) empty.remove();
+      el.insertAdjacentHTML('afterbegin',
+        `<div data-liker="${myId}" style="display:flex;align-items:center;gap:10px;padding:6px 0;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px;cursor:pointer"
+            onclick="closePhotoModal();openUserProfile('${myId}','${esc(myName)}')">
+            <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initial}</div>
+            ${userLink(myId, '@' + myName)}
+          </div>
+        </div>`
+      );
+    }
+  } else {
+    const entry = el.querySelector(`[data-liker="${myId}"]`);
+    if (entry) entry.remove();
+    if (!el.querySelector('[data-liker]'))
+      el.innerHTML = '<div data-empty style="color:var(--muted);font-size:13px">Пока никто не лайкнул</div>';
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// UPLOAD
+// ──────────────────────────────────────────────────────────
+function onFileChange(inp) {
+  if (inp.files[0]) showPreview(inp.files[0]);
+}
+function showPreview(file) {
+  const wrap = document.getElementById('preview-wrap');
+  const img  = document.getElementById('preview-img');
+  const r = new FileReader();
+  r.onload = e => { img.src = e.target.result; wrap.style.display = 'block'; };
+  r.readAsDataURL(file);
+}
+
+function validatePhotoFile(file) {
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return `Недопустимый формат файла. Разрешены: JPEG, PNG, WEBP, GIF. Ваш файл: "${file.type || 'неизвестный формат'}"`;
+  }
+  if (file.size > MAX_SIZE_BYTES) {
+    return `Файл слишком большой: ${(file.size / 1024 / 1024).toFixed(1)} МБ. Максимум: 10 МБ.`;
+  }
+  return null;
+}
+
+async function doUpload() {
+  const title = v('u-title');
+  const desc  = v('u-desc');
+  const file  = document.getElementById('u-file').files[0];
+
+  if (!title) return alert2('msg-upload', 'Введите название', 'err');
+  if (!file)  return alert2('msg-upload', 'Выберите файл', 'err');
+
+  const validationError = validatePhotoFile(file);
+  if (validationError) {
+    alert2('msg-upload', validationError, 'err');
+    toast(validationError, 't-err');
+    return;
+  }
+
+  clearAlert('msg-upload');
+
+  const btn = document.querySelector('#page-upload .btn');
+  btn.disabled = true;
+  btn.textContent = 'Публикация...';
+
+  console.log('userId:', s.userId);
+  console.log('token:', s.token);
+  console.log('file:', file);
+
+  try {
+    const fd = new FormData();
+    fd.append('authorUserId', s.userId);
+    fd.append('title', title);
+    fd.append('description', desc || '');
+    fd.append('file', file);
+
+    const r = await fetch(API.photos, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${s.token}` },
+      body: fd,
+    });
+
+    if (r.ok) {
+      alert2('msg-upload', 'Фото опубликовано!', 'ok');
+      document.getElementById('u-title').value = '';
+      document.getElementById('u-desc').value  = '';
+      document.getElementById('u-file').value  = '';
+      document.getElementById('preview-wrap').style.display = 'none';
+      toast('Фото опубликовано!', 't-ok');
+    } else {
+      const e = await r.json().catch(()=>({}));
+      const msg = e.error || e.message || 'Ошибка загрузки';
+      alert2('msg-upload', msg, 'err');
+      toast(msg, 't-err');
+    }
+  } catch { alert2('msg-upload', 'Сервер недоступен', 'err'); }
+
+  btn.disabled = false;
+  btn.textContent = 'Опубликовать';
+}
+
+// ──────────────────────────────────────────────────────────
+// PROFILE
+// ──────────────────────────────────────────────────────────
+async function loadProfile() {
+  const banner = document.getElementById('profile-banner');
+  const photosEl = document.getElementById('profile-photos');
+
+  const initial = (s.userName || '?')[0].toUpperCase();
+  banner.innerHTML = `
+    <div class="profile-ava">${initial}</div>
+    <div>
+      <div class="profile-name">@${esc(s.userName)}</div>
+      <div class="profile-stats">
+        <div><div class="stat-val" id="st-photos">–</div><div class="stat-lbl">Фото</div></div>
+        <div style="cursor:pointer" onclick="openFollowersModal('${s.userId}','following')">
+          <div class="stat-val" id="st-following">–</div><div class="stat-lbl">Подписки</div>
+        </div>
+        <div style="cursor:pointer" onclick="openFollowersModal('${s.userId}','followers')">
+          <div class="stat-val" id="st-followers">–</div><div class="stat-lbl">Подписчики</div>
+        </div>
+      </div>
+    </div>`;
+
+  photosEl.innerHTML = spinner();
+
+  try {
+    const [photosRes, followersRes, followingRes] = await Promise.all([
+      fetch(`${API.photos}/by-user/${s.userId}`, { headers: auth() }),
+      fetch(`${API.friends}/${s.userId}/followers`),
+      fetch(`${API.friends}/${s.userId}/following`),
+    ]);
+
+    if (!photosRes.ok) throw new Error();
+    const photos = await photosRes.json();
+    const stPhotos = document.getElementById('st-photos');
+    if (stPhotos) stPhotos.textContent = photos.length;
+
+    if (followersRes.ok) {
+      const followers = await followersRes.json();
+      const stFollowers = document.getElementById('st-followers');
+      if (stFollowers) stFollowers.textContent = followers.length;
+    }
+
+    if (followingRes.ok) {
+      const following = await followingRes.json();
+      const stFollowing = document.getElementById('st-following');
+      if (stFollowing) stFollowing.textContent = following.length;
+    }
+
+    if (!photos.length) { photosEl.innerHTML = empty('📷', 'Вы ещё ничего не публиковали'); return; }
+
+    photosEl.innerHTML = `<div class="photos-grid">${photos.map(gridCellOwn).join('')}</div>`;
+  } catch {
+    photosEl.innerHTML = empty('⚠️', 'Не удалось загрузить фото');
+  }
+}
+
+// PhotoResponse: { id, authorUserId, title, description, objectKey, previewObjectKey, createdAtUtc }
+function gridCell(p) {
+  const key = p.previewObjectKey || p.objectKey || '';
+  const url = key ? `${MINIO}/${MINIO_BUCKET}/${key}` : '';
+  const id = p.id || p.photoId || '';
+  return `<div class="grid-cell" onclick="openPhoto('${id}')" title="${esc(p.title||'')}">
+    ${url
+      ? `<img src="${esc(url)}" alt="${esc(p.title||'')}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'grid-placeholder',textContent:'🖼️'}))">`
+      : `<div class="grid-placeholder">🖼️</div>`}
+  </div>`;
+}
+
+function gridCellOwn(p) {
+  const key = p.previewObjectKey || p.objectKey || '';
+  const url = key ? `${MINIO}/${MINIO_BUCKET}/${key}` : '';
+  const id = p.id || p.photoId || '';
+  return `<div class="grid-cell" style="position:relative">
+    <div onclick="openPhoto('${id}')" style="cursor:pointer;width:100%;height:100%">
+      ${url
+        ? `<img src="${esc(url)}" alt="${esc(p.title||'')}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">`
+        : `<div class="grid-placeholder">🖼️</div>`}
+    </div>
+    <div style="position:absolute;top:6px;right:6px;display:flex;gap:4px">
+      <button onclick="event.stopPropagation();editPhotoDesc('${id}','${esc(p.description||'')}')"
+        style="background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:6px;padding:4px 6px;cursor:pointer;font-size:11px">✏️</button>
+      <button onclick="event.stopPropagation();deletePhoto('${id}')"
+        style="background:rgba(220,50,50,0.8);border:none;color:#fff;border-radius:6px;padding:4px 6px;cursor:pointer;font-size:11px">🗑</button>
+    </div>
+  </div>`;
+}
+
+// ──────────────────────────────────────────────────────────
+// PEOPLE
+// ──────────────────────────────────────────────────────────
+let peopleCurrentPage = 1;
+let peopleTotalPages = 1;
+let peopleSearchQuery = '';
+let peopleSearchTimer = null;
+let peopleSocialScores = {};
+
+async function loadPeopleScores() {
+  if (!s.userId) return;
+  try {
+    const r = await fetch(`${API.friends}/${s.userId}/people-scores`, { headers: auth() });
+    if (r.ok) {
+      const scores = await r.json();
+      peopleSocialScores = {};
+      scores.forEach(sc => { peopleSocialScores[String(sc.userId)] = sc; });
+    }
+  } catch {}
+}
+
+function renderUserCard(u) {
+  const uid = String(u.userId || u.id || '');
+  const name = u.userName || u.username || '';
+  const initial = (name || '?')[0].toUpperCase();
+  return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px">
+    <div class="avatar" style="flex-shrink:0;cursor:pointer"
+      onclick="openUserProfile('${uid}','${esc(name)}')">${initial}</div>
+    <div style="flex:1;min-width:0;cursor:pointer"
+      onclick="openUserProfile('${uid}','${esc(name)}')">
+      <div style="font-size:14px;font-weight:600">@${esc(name)}</div>
+      <div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email || '')}</div>
+    </div>
+    ${followBtn(uid)}
+  </div>`;
+}
+
+function renderSectionHeader(title) {
+  return `<div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:16px 4px 8px">${title}</div>`;
+}
+
+async function loadPeople(page = 1) {
+  peopleCurrentPage = page;
+  const el = document.getElementById('people-body');
+
+  if (page === 1) {
+    el.innerHTML = `
+      <div id="people-list">${spinner()}</div>
+      <div id="people-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px"></div>`;
+    await loadPeopleScores();
+  } else {
+    const listEl = document.getElementById('people-list');
+    if (listEl) listEl.innerHTML = spinner();
+  }
+
+  try {
+    const params = new URLSearchParams({ page, pageSize: 50 });
+    if (peopleSearchQuery) params.set('search', peopleSearchQuery);
+
+    const r = await fetch(`${API.auth}/users?${params}`, { headers: auth() });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+
+    peopleTotalPages = data.totalPages || 1;
+    const users = (data.users || []).filter(u => String(u.userId || u.id) !== String(s.userId));
+
+    const list = document.getElementById('people-list');
+    if (!list) return;
+
+    if (!users.length) {
+      list.innerHTML = empty('👥', peopleSearchQuery ? 'Никого не найдено' : 'Пока нет других пользователей');
+      renderPeoplePagination(data.totalCount, data.totalPages, page);
+      return;
+    }
+
+    if (peopleSearchQuery || Object.keys(peopleSocialScores).length === 0) {
+      list.innerHTML = users.map(renderUserCard).join('');
+      renderPeoplePagination(data.totalCount, data.totalPages, page);
+      return;
+    }
+
+    const following = [], suggested = [], others = [];
+    users.forEach(u => {
+      const uid = String(u.userId || u.id || '');
+      const sc = peopleSocialScores[uid];
+      if (sc?.section === 'following') following.push(u);
+      else if (sc?.section === 'suggested') suggested.push(u);
+      else others.push(u);
+    });
+
+    suggested.sort((a, b) => {
+      const sa = peopleSocialScores[String(a.userId || a.id)]?.commonScore ?? 0;
+      const sb = peopleSocialScores[String(b.userId || b.id)]?.commonScore ?? 0;
+      return sb - sa;
+    });
+
+    let html = '';
+    if (following.length) {
+      html += renderSectionHeader('Мои подписки');
+      html += following.map(renderUserCard).join('');
+    }
+    if (suggested.length) {
+      html += renderSectionHeader('Возможно знакомы');
+      html += suggested.map(renderUserCard).join('');
+    }
+    if (others.length) {
+      html += renderSectionHeader('Все пользователи');
+      html += others.map(renderUserCard).join('');
+    }
+    list.innerHTML = html;
+
+    renderPeoplePagination(data.totalCount, data.totalPages, page);
+  } catch {
+    const list = document.getElementById('people-list');
+    if (list) list.innerHTML = empty('⚠️', 'Не удалось загрузить пользователей');
+  }
+}
+
+function renderPeoplePagination(totalCount, totalPages, currentPage) {
+  const el = document.getElementById('people-pagination');
+  if (!el) return;
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  const btn = (label, page, active, disabled) =>
+    `<button style="background:${active ? 'var(--accent)' : 'var(--surface)'};border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};color:${active ? '#000' : 'var(--text)'};border-radius:8px;padding:6px 12px;cursor:pointer;font-family:inherit;font-size:13px;${active ? 'font-weight:600' : ''}"
+      ${disabled ? 'disabled' : ''} onclick="loadPeople(${page})">${label}</button>`;
+
+  const delta = 2;
+  const pages = [];
+  for (let i = Math.max(1, currentPage - delta); i <= Math.min(totalPages, currentPage + delta); i++)
+    pages.push(i);
+
+  let html = btn('←', currentPage - 1, false, currentPage === 1);
+
+  if (pages[0] > 1) {
+    html += btn('1', 1, false, false);
+    if (pages[0] > 2) html += `<span style="color:var(--muted)">…</span>`;
+  }
+
+  pages.forEach(p => { html += btn(p, p, p === currentPage, false); });
+
+  if (pages[pages.length - 1] < totalPages) {
+    if (pages[pages.length - 1] < totalPages - 1) html += `<span style="color:var(--muted)">…</span>`;
+    html += btn(totalPages, totalPages, false, false);
+  }
+
+  html += btn('→', currentPage + 1, false, currentPage === totalPages);
+  html += `<span style="color:var(--muted);font-size:12px;margin-left:4px">${totalCount} чел.</span>`;
+
+  el.innerHTML = html;
+}
+
+function filterPeople(query) {
+  clearTimeout(peopleSearchTimer);
+  peopleSearchQuery = query.trim();
+  peopleSearchTimer = setTimeout(() => loadPeople(1), 300);
+}
+
+async function openUserProfile(userId, userName) {
+  prevPage = document.querySelector('.page.active')?.id?.replace('page-', '') || 'feed';
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-user-profile').classList.add('active');
+
+  const initial = (userName || '?')[0].toUpperCase();
+  const banner = document.getElementById('up-profile-banner');
+  banner.innerHTML = `
+    <div class="profile-ava">${initial}</div>
+    <div style="flex:1">
+      <div class="profile-name">@${esc(userName)}</div>
+      <div class="profile-stats">
+        <div><div class="stat-val" id="up-st-photos">–</div><div class="stat-lbl">Фото</div></div>
+        <div style="cursor:pointer" onclick="openFollowersModal('${userId}','following')">
+          <div class="stat-val" id="up-st-following">–</div><div class="stat-lbl">Подписки</div>
+        </div>
+        <div style="cursor:pointer" onclick="openFollowersModal('${userId}','followers')">
+          <div class="stat-val" id="up-st-followers">–</div><div class="stat-lbl">Подписчики</div>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        ${followBtn(userId, 'margin-top:0')}
+      </div>
+    </div>`;
+
+  document.getElementById('up-photos-grid').innerHTML = spinner();
+
+  try {
+    const [photosR, followersR, followingR] = await Promise.all([
+      fetch(`${API.photos}/by-user/${userId}`),
+      fetch(`${API.friends}/${userId}/followers`),
+      fetch(`${API.friends}/${userId}/following`),
+    ]);
+    if (photosR.ok) {
+      const photos = await photosR.json();
+      const el = document.getElementById('up-st-photos');
+      if (el) el.textContent = photos.length;
+      document.getElementById('up-photos-grid').innerHTML = photos.length
+        ? `<div class="photos-grid">${photos.map(gridCell).join('')}</div>`
+        : empty('📷', 'Нет фотографий');
+    }
+    if (followersR.ok) {
+      const followers = await followersR.json();
+      const el = document.getElementById('up-st-followers');
+      if (el) el.textContent = followers.length;
+    }
+    if (followingR.ok) {
+      const following = await followingR.json();
+      const el = document.getElementById('up-st-following');
+      if (el) el.textContent = following.length;
+    }
+  } catch {}
+}
+
+// ──────────────────────────────────────────────────────────
+// HELPERS
+// ──────────────────────────────────────────────────────────
+function v(id)   { return document.getElementById(id)?.value.trim() || ''; }
+function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function auth()  { return s.token ? { Authorization: `Bearer ${s.token}` } : {}; }
+function post(url, body) {
+  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json',...auth()}, body:JSON.stringify(body) });
+}
+function uuid() {
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+}
+function spinner() { return '<div class="spinner-wrap"><div class="spinner"></div></div>'; }
+function empty(icon, text) {
+  return `<div class="empty"><div class="empty-icon">${icon}</div><div class="empty-text">${text}</div></div>`;
+}
+
+let _toastTimer;
+function toast(msg, cls = 't-ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${cls}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function alert2(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg; el.className = `alert ${type} show`;
+}
+function clearAlert(id) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'alert';
+}
+
+function svgHeart(filled) {
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="${filled?'#ff6b00':'none'}" stroke="${filled?'#ff6b00':'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+}
+function svgImg() {
+  return `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+}
+function makePlaceholder(title) {
+  const d = document.createElement('div');
+  d.className = 'pc-placeholder';
+  d.innerHTML = svgImg() + `<span>${esc(title)}</span>`;
+  return d;
+}
+
+// ──────────────────────────────────────────────────────────
+// DELETE / EDIT PHOTO (own profile)
+// ──────────────────────────────────────────────────────────
+async function deletePhoto(photoId) {
+  if (!confirm('Удалить фото?')) return;
+  try {
+    const r = await fetch(`${API.photos}/${photoId}`, {
+      method: 'DELETE',
+      headers: auth()
+    });
+    if (r.ok || r.status === 204) {
+      toast('Фото удалено', 't-ok');
+      loadProfile();
+    } else {
+      toast('Ошибка при удалении', 't-err');
+    }
+  } catch { toast('Ошибка соединения', 't-err'); }
+}
+
+async function editPhotoDesc(photoId, currentDesc) {
+  const newDesc = prompt('Описание:', currentDesc || '');
+  if (newDesc === null) return;
+  try {
+    const r = await fetch(`${API.photos}/${photoId}/description`, {
+      method: 'PUT',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: newDesc })
+    });
+    if (r.ok) {
+      toast('Описание обновлено', 't-ok');
+      loadProfile();
+    } else {
+      toast('Ошибка при обновлении', 't-err');
+    }
+  } catch { toast('Ошибка соединения', 't-err'); }
+}
+
+// ──────────────────────────────────────────────────────────
+// HELPERS
+// ──────────────────────────────────────────────────────────
+async function fetchUsersMap(userIds) {
+  const idSet = new Set(userIds.map(String));
+  const result = {};
+  let page = 1, totalPages = 1;
+  do {
+    const r = await fetch(`${API.auth}/users?page=${page}&pageSize=50`, { headers: auth() });
+    if (!r.ok) break;
+    const data = await r.json();
+    totalPages = data.totalPages ?? 1;
+    for (const u of (data.users || [])) {
+      const id = String(u.userId || u.id);
+      if (idSet.has(id)) result[id] = u;
+    }
+    if (Object.keys(result).length >= idSet.size) break;
+    page++;
+  } while (page <= totalPages);
+  return result;
+}
+
+// ──────────────────────────────────────────────────────────
+// FOLLOWERS MODAL
+// ──────────────────────────────────────────────────────────
+function closeFollowersModal() {
+  const m = document.getElementById('followers-modal');
+  if (m) { m.style.display = 'none'; }
+}
+
+async function openFollowersModal(userId, type) {
+  const modal = document.getElementById('followers-modal');
+  const title = document.getElementById('followers-modal-title');
+  const body = document.getElementById('followers-modal-body');
+  title.textContent = type === 'followers' ? 'Подписчики' : 'Подписки';
+  body.innerHTML = spinner();
+  modal.style.display = 'flex';
+
+  try {
+    const r = await fetch(`${API.friends}/${userId}/${type}`, { headers: auth() });
+    if (!r.ok) throw new Error();
+    const ids = await r.json();
+
+    if (!ids.length) {
+      body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:20px">${type === 'followers' ? 'Нет подписчиков' : 'Нет подписок'}</div>`;
+      return;
+    }
+
+    const usersMap = await fetchUsersMap(ids);
+
+    body.innerHTML = ids.map(id => {
+      const u = usersMap[String(id)];
+      const name = u ? (u.userName || u.username || 'Пользователь') : String(id).slice(0, 8) + '...';
+      const initial = name[0].toUpperCase();
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;background:var(--bg);justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:12px;cursor:pointer;flex:1;min-width:0"
+          onclick="closeFollowersModal();openUserProfile('${id}','${esc(name)}')">
+          <div class="avatar" style="width:36px;height:36px;font-size:14px;flex-shrink:0">${initial}</div>
+          ${userLink(id, '@' + name, 'font-size:14px;font-weight:500')}
+        </div>
+        ${followBtn(id, 'font-size:12px;padding:4px 10px')}
+      </div>`;
+    }).join('');
+  } catch {
+    body.innerHTML = `<div style="color:var(--muted);text-align:center;padding:20px">Не удалось загрузить список</div>`;
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// PHOTO MODAL
+// ──────────────────────────────────────────────────────────
+let currentPhotoModalId = null;
+
+function closePhotoModal() {
+  document.getElementById('photo-modal').style.display = 'none';
+  currentPhotoModalId = null;
+}
+
+async function openPhoto(photoId) {
+  if (!photoId) return;
+  currentPhotoModalId = photoId;
+  const modal = document.getElementById('photo-modal');
+  modal.style.display = 'flex';
+
+  document.getElementById('photo-modal-img').src = '';
+  document.getElementById('photo-modal-title').textContent = '';
+  document.getElementById('photo-modal-desc').textContent = '';
+  document.getElementById('photo-modal-likes-count').textContent = '–';
+  document.getElementById('photo-modal-likers').innerHTML = '<div style="color:var(--muted);font-size:13px">Загрузка...</div>';
+
+  try {
+    const [photoRes, countRes] = await Promise.all([
+      fetch(`${API.photos}/${photoId}`, { headers: auth() }),
+      fetch(`${API.likes}/photos/${photoId}/count`),
+    ]);
+
+    if (photoRes.ok) {
+      const p = await photoRes.json();
+      const key = p.objectKey || p.previewObjectKey || '';
+      if (key) document.getElementById('photo-modal-img').src = `${MINIO}/${MINIO_BUCKET}/${key}`;
+      document.getElementById('photo-modal-title').textContent = p.title || '';
+      document.getElementById('photo-modal-desc').textContent = p.description || '';
+    }
+
+    if (countRes.ok) {
+      const d = await countRes.json();
+      const count = d.count ?? d.Count ?? 0;
+      document.getElementById('photo-modal-likes-count').textContent = count;
+      const likeBtn = document.getElementById('photo-modal-like-btn');
+      likeBtn.style.color = likedSet.has(photoId) ? 'var(--accent)' : 'var(--muted)';
+    }
+
+    await loadPhotoLikers(photoId);
+  } catch {
+    document.getElementById('photo-modal-likers').innerHTML =
+      '<div style="color:var(--muted);font-size:13px">Не удалось загрузить данные</div>';
+  }
+}
+
+async function loadPhotoLikers(photoId) {
+  const el = document.getElementById('photo-modal-likers');
+  try {
+    const r = await fetch(`${API.likes}/photos/${photoId}/users`, { headers: auth() });
+    if (!r.ok) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">–</div>'; return; }
+    const likerIds = await r.json();
+    if (!likerIds.length) {
+      el.innerHTML = '<div data-empty style="color:var(--muted);font-size:13px">Пока никто не лайкнул</div>';
+      return;
+    }
+    const usersMap = await fetchUsersMap(likerIds);
+
+    el.innerHTML = likerIds.map(id => {
+      const u = usersMap[String(id)];
+      const name = u ? (u.userName || 'Пользователь') : 'Пользователь';
+      const initial = name[0].toUpperCase();
+      return `<div data-liker="${id}" style="display:flex;align-items:center;gap:10px;padding:6px 0;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:10px;cursor:pointer"
+          onclick="closePhotoModal();openUserProfile('${id}','${esc(name)}')">
+          <div class="avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${initial}</div>
+          ${userLink(id, '@' + name)}
+        </div>
+        ${followBtn(id, 'font-size:12px;padding:4px 10px')}
+      </div>`;
+    }).join('');
+  } catch {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">–</div>';
+  }
+}
+
+async function toggleLikeModal() {
+  if (!currentPhotoModalId) return;
+  await toggleLike(currentPhotoModalId);
+}
+
+// ──────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

@@ -1,4 +1,7 @@
+using MassTransit;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PhotoHub.Contracts.Events.Friends;
 using PhotoHub.FriendsService.Domain.Follows;
 using PhotoHub.FriendsService.Infrastructure.Persistence;
 
@@ -23,12 +26,16 @@ public static class FriendsEndpoints
         group.MapGet("/{userId:guid}/following/{targetUserId:guid}", IsFollowingAsync)
             .WithName("IsFollowing");
 
+        group.MapGet("/{userId:guid}/people-scores", GetPeopleScoresAsync)
+            .WithName("GetPeopleScores");
+
         return group;
     }
 
     private static async Task<IResult> FollowAsync(
-        FollowRequest request,
+        [FromBody] FollowRequest request,
         FriendsDbContext dbContext,
+        IPublishEndpoint publishEndpoint,
         CancellationToken cancellationToken)
     {
         if (request.FollowerId == Guid.Empty || request.FollowingId == Guid.Empty)
@@ -55,6 +62,11 @@ public static class FriendsEndpoints
         dbContext.Follows.Add(follow);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        await publishEndpoint.Publish(new UserFollowedEvent(
+            request.FollowerId,
+            request.FollowingId,
+            DateTime.UtcNow), cancellationToken);
+
         return Results.Ok(new FollowResponse(
             follow.Id,
             follow.FollowerId,
@@ -63,8 +75,9 @@ public static class FriendsEndpoints
     }
 
     private static async Task<IResult> UnfollowAsync(
-        FollowRequest request,
+        [FromBody] FollowRequest request,
         FriendsDbContext dbContext,
+        IPublishEndpoint publishEndpoint,
         CancellationToken cancellationToken)
     {
         if (request.FollowerId == Guid.Empty || request.FollowingId == Guid.Empty)
@@ -88,6 +101,11 @@ public static class FriendsEndpoints
 
         dbContext.Follows.Remove(follow);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        await publishEndpoint.Publish(new UserUnfollowedEvent(
+            request.FollowerId,
+            request.FollowingId,
+            DateTime.UtcNow), cancellationToken);
 
         return Results.NoContent();
     }
@@ -147,6 +165,64 @@ public static class FriendsEndpoints
 
         return Results.Ok(isFollowing);
     }
+
+    private static async Task<IResult> GetPeopleScoresAsync(
+        Guid userId,
+        FriendsDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        if (userId == Guid.Empty)
+        {
+            return Results.BadRequest(new { error = "UserId is required." });
+        }
+
+        var allFollows = await dbContext.Follows.ToListAsync(cancellationToken);
+
+        var myFollowing = allFollows
+            .Where(f => f.FollowerId == userId)
+            .Select(f => f.FollowingId)
+            .ToHashSet();
+
+        var myFollowers = allFollows
+            .Where(f => f.FollowingId == userId)
+            .Select(f => f.FollowerId)
+            .ToHashSet();
+
+        var allUserIds = allFollows
+            .SelectMany(f => new[] { f.FollowerId, f.FollowingId })
+            .Where(id => id != userId)
+            .ToHashSet();
+
+        var scores = allUserIds.Select(targetId =>
+        {
+            var isFollowing = myFollowing.Contains(targetId);
+
+            var targetFollowing = allFollows
+                .Where(f => f.FollowerId == targetId)
+                .Select(f => f.FollowingId)
+                .ToHashSet();
+
+            var targetFollowers = allFollows
+                .Where(f => f.FollowingId == targetId)
+                .Select(f => f.FollowerId)
+                .ToHashSet();
+
+            var commonFollowing = myFollowing.Intersect(targetFollowing).Count();
+            var commonFollowers = myFollowers.Intersect(targetFollowers).Count();
+            var commonScore = commonFollowing + commonFollowers;
+
+            var isMyFollower = myFollowers.Contains(targetId);
+            var effectiveScore = !isFollowing && isMyFollower && commonScore == 0 ? 1 : commonScore;
+
+            var section = isFollowing ? "following"
+                : effectiveScore > 0 ? "suggested"
+                : "others";
+
+            return new PeopleScoreDto(targetId, isFollowing, effectiveScore, section);
+        }).ToList();
+
+        return Results.Ok(scores);
+    }
 }
 
 public sealed record FollowRequest(
@@ -158,3 +234,9 @@ public sealed record FollowResponse(
     Guid FollowerId,
     Guid FollowingId,
     DateTime CreatedAtUtc);
+
+public sealed record PeopleScoreDto(
+    Guid UserId,
+    bool IsFollowing,
+    int CommonScore,
+    string Section);

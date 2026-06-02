@@ -8,21 +8,29 @@ public sealed class FriendsServiceClient(HttpClient httpClient)
         Guid userId,
         CancellationToken cancellationToken)
     {
+        return await GetUserListAsync($"/api/friends/{userId}/following", cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<Guid>> GetFollowersAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        return await GetUserListAsync($"/api/friends/{userId}/followers", cancellationToken);
+    }
+
+    private async Task<IReadOnlyCollection<Guid>> GetUserListAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            var response = await httpClient.GetAsync(
-                $"/api/friends/{userId}/following",
-                cancellationToken);
+            var response = await httpClient.GetAsync(path, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
-            {
                 throw new FriendsServiceUnavailableException();
-            }
 
-            var following = await response.Content.ReadFromJsonAsync<List<Guid>>(
-                cancellationToken);
-
-            return following ?? [];
+            var ids = await response.Content.ReadFromJsonAsync<List<Guid>>(cancellationToken);
+            return ids ?? [];
         }
         catch (HttpRequestException)
         {

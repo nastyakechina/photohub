@@ -1,8 +1,51 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets:
           - prometheus:9090
+
+  - job_name: api-gateway
+    static_configs:
+      - targets:
+          - api-gateway:8080
+    metrics_path: /metrics
+
+  - job_name: auth-service
+    static_configs:
+      - targets:
+          - auth-service:8080
+    metrics_path: /metrics
+
+  - job_name: friends-service
+    static_configs:
+      - targets:
+          - friends-service:8080
+    metrics_path: /metrics
+
+  - job_name: photo-service
+    static_configs:
+      - targets:
+          - photo-service:8080
+    metrics_path: /metrics
+
+  - job_name: feed-service
+    static_configs:
+      - targets:
+          - feed-service:8080
+    metrics_path: /metrics
+
+  - job_name: like-service
+    static_configs:
+      - targets:
+          - like-service:8080
+    metrics_path: /metrics
+
+  - job_name: preview-service
+    static_configs:
+      - targets:
+          - preview-service:8080
+    metrics_path: /metrics

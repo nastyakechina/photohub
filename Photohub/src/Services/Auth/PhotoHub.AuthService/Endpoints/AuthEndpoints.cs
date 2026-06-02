@@ -20,6 +20,9 @@ public static class AuthEndpoints
         group.MapPost("/login", LoginAsync)
             .WithName("Login");
 
+        group.MapGet("/users", GetAllUsersAsync)
+            .WithName("GetAllUsers");
+
         return group;
     }
 
@@ -158,6 +161,41 @@ public static class AuthEndpoints
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static async Task<IResult> GetAllUsersAsync(
+        AuthDbContext dbContext,
+        int page = 1,
+        int pageSize = 10,
+        string? search = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 50) pageSize = 10;
+
+        var query = dbContext.Users.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(u => EF.Functions.ILike(u.UserName, $"%{search}%"));
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+        var users = await query
+            .OrderBy(u => u.UserName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(u => new AuthUserResponse(u.Id, u.UserName, u.Email))
+            .ToListAsync(cancellationToken);
+
+        return Results.Ok(new
+        {
+            users,
+            page,
+            pageSize,
+            totalCount,
+            totalPages
+        });
     }
 }
 

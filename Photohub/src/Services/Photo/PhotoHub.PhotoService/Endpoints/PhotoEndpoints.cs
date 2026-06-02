@@ -1,3 +1,5 @@
+using Amazon.S3;
+using Amazon.S3.Model;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using PhotoHub.Contracts.Events.Photos;
@@ -11,7 +13,8 @@ public static class PhotoEndpoints
     public static RouteGroupBuilder MapPhotoEndpoints(this RouteGroupBuilder group)
     {
         group.MapPost("/", CreatePhotoAsync)
-            .WithName("CreatePhoto");
+            .WithName("CreatePhoto")
+            .DisableAntiforgery();
 
         group.MapGet("/{photoId:guid}", GetPhotoAsync)
             .WithName("GetPhoto");
@@ -22,55 +25,93 @@ public static class PhotoEndpoints
         group.MapPatch("/{photoId:guid}/preview", UpdatePreviewAsync)
             .WithName("UpdatePhotoPreview");
 
+        group.MapDelete("/{photoId:guid}", DeletePhotoAsync)
+            .WithName("DeletePhoto");
+
+        group.MapPut("/{photoId:guid}/description", UpdateDescriptionAsync)
+            .WithName("UpdatePhotoDescription");
+
         return group;
     }
 
     private static async Task<IResult> CreatePhotoAsync(
-        CreatePhotoRequest request,
+        HttpContext context,
+        IAmazonS3 s3,
         PhotoDbContext dbContext,
         IPublishEndpoint publishEndpoint,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        if (request.AuthorUserId == Guid.Empty)
-        {
-            return Results.BadRequest(new { error = "AuthorUserId is required." });
-        }
+        IFormCollection form;
+        try { form = await context.Request.ReadFormAsync(cancellationToken); }
+        catch { return Results.BadRequest(new { error = "Expected multipart/form-data." }); }
 
-        if (string.IsNullOrWhiteSpace(request.Title))
-        {
-            return Results.BadRequest(new { error = "Title is required." });
-        }
+        var authorUserIdStr = form["authorUserId"].ToString();
+        var title = form["title"].ToString();
+        var description = form["description"].ToString();
+        var file = form.Files["file"];
 
-        if (string.IsNullOrWhiteSpace(request.ObjectKey))
-        {
-            return Results.BadRequest(new { error = "ObjectKey is required." });
-        }
+        if (!Guid.TryParse(authorUserIdStr, out var authorUserId) || authorUserId == Guid.Empty)
+            return Results.BadRequest(new { error = "authorUserId is required." });
 
-        var photo = Photo.Create(
-            request.AuthorUserId,
-            request.Title,
-            request.Description,
-            request.ObjectKey);
+        if (string.IsNullOrWhiteSpace(title))
+            return Results.BadRequest(new { error = "title is required." });
+
+        if (file is null || file.Length == 0)
+            return Results.BadRequest(new { error = "Файл не выбран." });
+
+        var allowedTypes = new[] { "image/jpeg", "image/png", "image/webp", "image/gif" };
+        if (!allowedTypes.Contains(file.ContentType.ToLower()))
+            return Results.BadRequest(new { error = $"Недопустимый формат файла: {file.ContentType}. Разрешены: JPEG, PNG, WEBP, GIF." });
+
+        const long maxSizeBytes = 10 * 1024 * 1024;
+        if (file.Length > maxSizeBytes)
+            return Results.BadRequest(new { error = $"Файл слишком большой ({file.Length / 1024 / 1024} МБ). Максимум: 10 МБ." });
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, cancellationToken);
+        ms.Position = 0;
+
+        var header = new byte[4];
+        _ = await ms.ReadAsync(header, 0, 4, cancellationToken);
+        ms.Position = 0;
+
+        var isValidImage =
+            (header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF) ||
+            (header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47) ||
+            (header[0] == 0x47 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x38) ||
+            (header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46);
+
+        if (!isValidImage)
+            return Results.BadRequest(new { error = "Файл не является изображением. Содержимое файла не соответствует заявленному формату." });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var objectKey = $"{authorUserId}/{Guid.NewGuid()}{ext}";
+
+        await s3.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = "photos",
+            Key = objectKey,
+            InputStream = ms,
+            ContentType = file.ContentType,
+            CannedACL = S3CannedACL.PublicRead,
+        }, cancellationToken);
+
+        var photo = Photo.Create(authorUserId, title,
+            string.IsNullOrWhiteSpace(description) ? null : description,
+            objectKey);
 
         dbContext.Photos.Add(photo);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var logger = loggerFactory.CreateLogger("PhotoCreatedPublisher");
         var photoCreatedEvent = new PhotoCreatedEvent(
-            photo.Id,
-            photo.AuthorUserId,
-            photo.Title,
-            photo.ObjectKey,
-            photo.CreatedAtUtc);
-
+            photo.Id, photo.AuthorUserId, photo.Title, photo.ObjectKey, photo.CreatedAtUtc, photo.Description);
         await publishEndpoint.Publish(photoCreatedEvent, cancellationToken);
 
         logger.LogInformation(
             "Published PhotoCreatedEvent for PhotoId {PhotoId}, ObjectKey {ObjectKey}, AuthorUserId {AuthorUserId}",
-            photo.Id,
-            photo.ObjectKey,
-            photo.AuthorUserId);
+            photo.Id, photo.ObjectKey, photo.AuthorUserId);
 
         return Results.Ok(new CreatePhotoResponse(photo.Id));
     }
@@ -160,6 +201,39 @@ public static class PhotoEndpoints
 
         return Results.NoContent();
     }
+
+    private static async Task<IResult> DeletePhotoAsync(
+        Guid photoId,
+        PhotoDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var photo = await dbContext.Photos
+            .FirstOrDefaultAsync(p => p.Id == photoId, cancellationToken);
+
+        if (photo is null)
+            return Results.NotFound(new { error = "Photo not found." });
+
+        dbContext.Photos.Remove(photo);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> UpdateDescriptionAsync(
+        Guid photoId,
+        UpdateDescriptionRequest request,
+        PhotoDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var photo = await dbContext.Photos
+            .FirstOrDefaultAsync(p => p.Id == photoId, cancellationToken);
+
+        if (photo is null)
+            return Results.NotFound(new { error = "Photo not found." });
+
+        photo.UpdateDescription(request.Description);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Results.Ok();
+    }
 }
 
 public sealed record CreatePhotoRequest(
@@ -171,6 +245,8 @@ public sealed record CreatePhotoRequest(
 public sealed record CreatePhotoResponse(Guid PhotoId);
 
 public sealed record UpdatePhotoPreviewRequest(string PreviewObjectKey);
+
+public sealed record UpdateDescriptionRequest(string? Description);
 
 public sealed record PhotoResponse(
     Guid Id,

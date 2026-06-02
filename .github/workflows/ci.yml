@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, Nastya, Alina ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore Photohub/PhotoHub.sln
+
+      - name: Build
+        run: dotnet build Photohub/PhotoHub.sln --no-restore --configuration Release
+
+      - name: Verify Docker Compose config
+        run: |
+          cd Photohub
+          cp .env.example .env 2>/dev/null || echo "POSTGRES_USER=photohub" > .env
+          docker compose config --quiet

@@ -1,3 +1,4 @@
+using Amazon.S3;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using PhotoHub.Observability;
@@ -5,6 +6,16 @@ using PhotoHub.PhotoService.Endpoints;
 using PhotoHub.PhotoService.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:3001")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
 
 builder.AddPhotoHubObservability("PhotoHub.PhotoService");
 
@@ -32,12 +43,37 @@ builder.Services.AddMassTransit(busConfigurator =>
     });
 });
 
+var minioEndpoint = builder.Configuration["MinIO:Endpoint"] ?? "localhost";
+var minioPort     = builder.Configuration["MinIO:Port"]     ?? "9000";
+var minioKey      = builder.Configuration["MinIO:AccessKey"] ?? "minioadmin";
+var minioSecret   = builder.Configuration["MinIO:SecretKey"] ?? "minioadmin123";
+
+builder.Services.AddSingleton<IAmazonS3>(new AmazonS3Client(
+    minioKey, minioSecret,
+    new AmazonS3Config
+    {
+        ServiceURL = $"http://{minioEndpoint}:{minioPort}",
+        ForcePathStyle = true,
+        AuthenticationRegion = "us-east-1",
+    }
+));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<PhotoDbContext>();
+    db.Database.Migrate();
+}
+
 app.UsePhotoHubObservability();
+app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {

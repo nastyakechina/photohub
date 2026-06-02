@@ -1,3 +1,4 @@
+using Amazon.S3;
 using MassTransit;
 using PhotoHub.Observability;
 using PhotoHub.PreviewService.Consumers;
@@ -5,6 +6,23 @@ using PhotoHub.PreviewService.Consumers;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddPhotoHubObservability("PhotoHub.PreviewService");
+
+var minioEndpoint = builder.Configuration["MinIO:Endpoint"] ?? "localhost";
+var minioPort     = builder.Configuration["MinIO:Port"]     ?? "9000";
+var minioKey      = builder.Configuration["MinIO:AccessKey"] ?? "minioadmin";
+var minioSecret   = builder.Configuration["MinIO:SecretKey"] ?? "minioadmin123";
+
+builder.Services.AddSingleton<IAmazonS3>(new AmazonS3Client(
+    minioKey, minioSecret,
+    new AmazonS3Config
+    {
+        ServiceURL = $"http://{minioEndpoint}:{minioPort}",
+        ForcePathStyle = true,
+        AuthenticationRegion = "us-east-1",
+    }
+));
+
+builder.Services.AddHttpClient();
 
 builder.Services.AddMassTransit(busConfigurator =>
 {

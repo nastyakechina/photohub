@@ -1,5 +1,7 @@
-using PhotoHub.FeedService.Clients;
+using Microsoft.EntityFrameworkCore;
+using PhotoHub.FeedService.Infrastructure.Persistence;
 using PhotoHub.FeedService.Models;
+using PhotoHub.FeedService.Services;
 
 namespace PhotoHub.FeedService.Endpoints;
 
@@ -15,45 +17,47 @@ public static class FeedEndpoints
 
     private static async Task<IResult> GetFeedAsync(
         Guid userId,
-        FriendsServiceClient friendsServiceClient,
-        PhotoServiceClient photoServiceClient,
-        CancellationToken cancellationToken)
+        FeedDbContext dbContext,
+        RecommendationsService recommendationsService,
+        CancellationToken cancellationToken,
+        int page = 1,
+        int pageSize = 10)
     {
         if (userId == Guid.Empty)
-        {
             return Results.BadRequest(new { error = "UserId is required." });
-        }
 
-        IReadOnlyCollection<Guid> followingUserIds;
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 50);
 
-        try
-        {
-            followingUserIds = await friendsServiceClient.GetFollowingAsync(userId, cancellationToken);
-        }
-        catch (FriendsServiceUnavailableException)
-        {
-            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        }
+        var baseQuery = dbContext.FeedItems.Where(fi => fi.UserId == userId);
 
-        var photoTasks = followingUserIds.Select(followingUserId =>
-            photoServiceClient.GetPhotosByUserAsync(followingUserId, cancellationToken));
+        // Kick off recommendations in parallel (pure HTTP calls, no shared DbContext)
+        var recommendedTask = page == 1
+            ? recommendationsService.GetAsync(userId, cancellationToken)
+            : Task.FromResult<List<RecommendedFeedItemResponse>>([]);
 
-        var photoResults = await Task.WhenAll(photoTasks);
+        // EF Core: two queries sequential on the same DbContext instance
+        var totalCount = await baseQuery.CountAsync(cancellationToken);
 
-        var feed = photoResults
-            .SelectMany(photos => photos)
-            .OrderByDescending(photo => photo.CreatedAtUtc)
-            .Take(50)
-            .Select(photo => new FeedItemResponse(
-                photo.Id,
-                photo.AuthorUserId,
-                photo.Title,
-                photo.Description,
-                photo.ObjectKey,
-                photo.PreviewObjectKey,
-                photo.CreatedAtUtc))
-            .ToList();
+        var cutoff = DateTime.UtcNow.AddHours(-1);
+        var following = await baseQuery
+            .OrderByDescending(fi => fi.AddedToFeedAtUtc > cutoff ? DateTime.MaxValue : fi.CreatedAtUtc)
+            .ThenByDescending(fi => fi.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(fi => new FeedItemResponse(
+                fi.PhotoId,
+                fi.AuthorUserId,
+                fi.AuthorName,
+                fi.Title,
+                fi.Description,
+                fi.ObjectKey,
+                fi.PreviewObjectKey,
+                fi.CreatedAtUtc))
+            .ToListAsync(cancellationToken);
 
-        return Results.Ok(feed);
+        var recommended = await recommendedTask;
+
+        return Results.Ok(new FeedResponse(following, recommended, totalCount, page, pageSize));
     }
 }
